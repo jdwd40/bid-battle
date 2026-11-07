@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "outDir": "dist-types", "rootDir": "../..", "jsx": "react-jsx", "lib": ["ES2022", "DOM", "DOM.Iterable"], "emitDeclarationOnly": true, "types": ["vite/client"] },
+  "include": ["src", "../engine/src", "../server/src/protocol.ts"]
+}

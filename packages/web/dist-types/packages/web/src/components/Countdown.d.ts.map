@@ -1,0 +1,1 @@
+{"version":3,"file":"Countdown.d.ts","sourceRoot":"","sources":["../../../../../src/components/Countdown.tsx"],"names":[],"mappings":"AAEA,UAAU,KAAK;IACb,QAAQ,EAAE,MAAM,GAAG,IAAI,CAAC;IACxB,2DAA2D;IAC3D,MAAM,EAAE,MAAM,CAAC;IACf,2CAA2C;IAC3C,OAAO,EAAE,MAAM,CAAC;IAChB,KAAK,EAAE,MAAM,CAAC;CACf;AAED,wBAAgB,SAAS,CAAC,EAAE,QAAQ,EAAE,MAAM,EAAE,OAAO,EAAE,KAAK,EAAE,EAAE,KAAK,+BA0BpE"}

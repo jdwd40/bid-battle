@@ -1,0 +1,30 @@
+{
+  "name": "bid-battle",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Bid Battle - a multiplayer market-making card game prototype",
+  "workspaces": [
+    "packages/engine",
+    "packages/server",
+    "packages/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,green \"npm run dev -w @bid-battle/server\" \"npm run dev -w @bid-battle/web\"",
+    "build": "npm run build -w @bid-battle/engine && npm run build -w @bid-battle/server && npm run build -w @bid-battle/web",
+    "typecheck": "tsc -b packages/engine packages/server packages/web",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "start": "node packages/server/dist/index.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^24.0.0",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.25.12": true
+  }
+}
