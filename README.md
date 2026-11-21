@@ -54,8 +54,9 @@ client from another device on your network, add that address (for example
 ## Playing from a second browser or device
 
 1. Player one creates a table and reads the five-letter room code (or clicks **Copy invite link**).
-2. On the same machine, open a second tab or a private window at http://localhost:5173 and join with
-   the code. Sessions are stored per tab, so two tabs are two players.
+2. On the same machine, open a private window or a second browser at http://localhost:5173 and join
+   with the code. Your seat is remembered per room in the browser, so two tabs in one browser are the
+   same player.
 3. From another device on the same network, open `http://<your-LAN-IP>:5173/?room=CODE`. Vite binds
    to localhost by default; run `npm run dev -w @bid-battle/web -- --host` (with the server running
    separately via `ALLOWED_ORIGINS=http://<your-LAN-IP>:5173 npm run dev -w @bid-battle/server`, since
@@ -64,6 +65,29 @@ client from another device on your network, add that address (for example
    a single port (3001) serves both the client and the game server.
 4. The host chooses each empty seat's bot difficulty (Easy / Normal / Hard, default Normal) and
    starts. Empty seats become bots. Nobody can join after the start; reconnecting is not a join.
+
+## Deploying to Fly.io
+
+Production is one always-running Fly.io machine at https://bid-battle.fly.dev (see
+`docs/adr/0001-single-instance-in-memory-rooms.md`). `Dockerfile` builds the engine, server and web
+client and runs the bundled server, which serves the client on the same port. `fly.toml` keeps
+exactly one machine running with auto-stop off, uses `/health` as the health check, allows 10 s
+between the stop signal and a forced kill, and sets `ALLOWED_ORIGINS=https://bid-battle.fly.dev`
+and `CLIENT_IP_HEADER=Fly-Client-IP`. Deploys are manual, once CI passes:
+
+1. Install `flyctl` (https://fly.io/docs/flyctl/install/) and log in with `fly auth login`. The
+   first time only, create the app with `fly apps create bid-battle`.
+2. Check that no match is running: `curl https://bid-battle.fly.dev/status` must report 0 active
+   matches. A deploy restarts the server and ends every match in progress.
+3. Run `fly deploy` from the repo root.
+
+`GET /status` returns `{ "activeMatches": n, "openRooms": n }`; an active match is one that has
+started and is not complete. On SIGTERM or SIGINT the server refuses new rooms, tells every
+connected player that the server is restarting, waits a second for the notice to arrive, then
+closes.
+
+To try the image locally: `docker build -t bid-battle . && docker run --rm -p 3001:3001 bid-battle`,
+then open http://localhost:3001 (`curl http://localhost:3001/health` returns `{"ok":true}`).
 
 ## Rules
 
@@ -157,7 +181,7 @@ result; a command carrying an outdated phase version is rejected.
 
 Disconnected players keep their seat, cards, balance and quotes; at the next decision the room lets a
 Normal bot act for them: a takeover (the seat is marked "Takeover", distinct from a bot seat).
-Reconnecting with the per-tab token cancels any not-yet-fired bot action and hands control back without restarting anything. Host
+Reconnecting with the room's stored token cancels any not-yet-fired bot action and hands control back without restarting anything. Host
 control moves to another player if the host leaves the lobby; a running match never depends on the
 host.
 
@@ -182,7 +206,7 @@ engine commands with the same validation.
 - `npm run test:e2e` runs the browser smoke test: create room → join from a second context → set bot
   difficulties → start → sealed quotes (opponent's prices hidden until publication) → trade with
   preview → settlement → both clients agree on cards, settlement value and balances → ready for round 2; plus
-  a reload/reconnect test. The Playwright web server runs the production build with 100 ms bot
+  reload/reconnect, close-tab-and-reopen-invite-link, per-room token, leave and stale-token tests. The Playwright web server runs the production build with 100 ms bot
   delays and shortened turn/counter timers.
 
 ## Design decisions and assumptions
@@ -197,24 +221,15 @@ engine commands with the same validation.
   players are ready). All server-side; the client only renders the deadline.
 - A zero-balance trader stays seated and can only post riskless quotes; no top-ups.
 
-## Deploying
-
-Rooms live only in the server's memory (ADR 0001), so a deploy ends every running match.
-
-- **Rule: before deploying, check that `GET /status` shows `"activeMatches": 0`.** It returns
-  `{ "activeMatches": n, "openRooms": n }`; an active match is one that has started and is not
-  complete. `GET /health` is the platform health check.
-- On SIGTERM or SIGINT the server refuses new rooms, tells every connected player that the server
-  is restarting, waits a second for the notice to arrive, then closes.
-
 ## Known limitations
 
 - In-memory rooms: a server restart ends all matches (players are told it is restarting). Idle rooms
   with no connected players are
   swept after 10 minutes.
-- No accounts, matchmaking, spectators, persistence, or deployment configuration.
-- Reconnect tokens live in the tab's `sessionStorage`; closing the tab loses the seat (a
-  takeover by a bot plays it out).
+- No accounts, matchmaking, spectators or persistence.
+- Reconnect tokens live in the browser's `localStorage`, one per room code. Reopening the invite link
+  (`?room=CODE`) in the same browser rejoins the seat; leaving the room forgets it. A different
+  browser or device cannot reclaim the seat.
 - The action panel offers the best bid/ask to hit; countering lets you target any trader's quote.
 - Bot tuning is heuristic. Over 200 seeded matches Hard averages ≈110 credits, Normal ≈100 and
   Easy ≈89, with roughly 27 trades per match.

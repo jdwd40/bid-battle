@@ -1,5 +1,8 @@
 import type { Command, CommandResult, Difficulty, PlayerView } from '@bid-battle/engine';
 
+/** Rejoin error meaning the room or seat is gone for good, so the client should forget its token. Other rejoin errors (e.g. rate limits) are transient. */
+export const SESSION_GONE = 'that session no longer exists';
+
 export type SeatKind = 'open' | 'human' | 'bot';
 
 export interface LobbySeatView {
