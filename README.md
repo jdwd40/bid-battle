@@ -155,14 +155,14 @@ engine commands with the same validation.
 
 ## Testing
 
-- `npm test` runs 45 Vitest tests: deck/deal, bounds, reservation subsets, negative prices,
+- `npm test` runs 48 Vitest tests: deck/deal, bounds, reservation subsets, negative prices,
   reference trade, independent sides, self-trade rejection, position limits, counter accept/decline/
   timeout, quote expiry order, rotation across rounds, exactly-once settlement, view sanitisation,
   structurally restricted bot observation, 150 seeded all-AI matches with invariants (total 400,
   no negative balances, |q| ≤ 2, matched counterparties), the room driver with fake time (solo
   match, duplicate commands, wrong seat / stale phase / malformed payloads, AI takeover and
   reconnect), and a real Socket.IO session with two clients (join, hidden information, trade,
-  duplicate command, reconnect, state agreement).
+  duplicate command, reconnect, state agreement), plus the status route and shutdown notice.
 - `npm run test:e2e` runs the browser smoke test: create room → join from a second context → set AI
   difficulties → start → sealed quotes (opponent's prices hidden until publication) → trade with
   preview → settlement → both clients agree on cards, value and balances → ready for round 2; plus
@@ -181,9 +181,19 @@ engine commands with the same validation.
   humans are ready). All server-side; the client only renders the deadline.
 - A zero-balance trader stays seated and can only post riskless quotes; no top-ups.
 
+## Deploying
+
+Rooms live only in the server's memory (ADR 0001), so a deploy ends every running match.
+
+- **Rule: before deploying, check that `GET /status` shows `"activeMatches": 0`.** It returns
+  `{ "activeMatches": n, "openRooms": n }`; an active match is one that has started and is not
+  complete. `GET /health` is the platform health check.
+- On SIGTERM or SIGINT the server refuses new rooms, tells every connected player that the server
+  is restarting, waits a second for the notice to arrive, then closes.
+
 ## Known limitations
 
-- In-memory rooms: a server restart ends all matches. Idle rooms with no connected humans are
+- In-memory rooms: a server restart ends all matches (players are told it is restarting). Idle rooms with no connected humans are
   swept after 10 minutes.
 - No accounts, matchmaking, spectators, persistence, or deployment configuration.
 - Reconnect tokens live in the tab's `sessionStorage`; closing the tab loses the seat (the AI

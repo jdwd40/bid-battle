@@ -17,7 +17,11 @@ export interface GameServerOptions {
   audit?: boolean;
   /** Rooms with no connected humans are removed after this many ms. */
   idleRoomMs?: number;
+  /** After the restarting notice, wait this long (on the clock) so it reaches clients before the sockets close. */
+  shutdownGraceMs?: number;
 }
+
+export const SERVER_RESTARTING_NOTICE = 'The server is restarting, so this match has ended. Please create or join a new room in a minute.';
 
 interface SocketData {
   token?: string;
@@ -44,7 +48,18 @@ export function createGameServer(opts: GameServerOptions = {}) {
   const tokenToRoom = new Map<string, string>();
   const sockets = new Map<string, Set<GameSocket>>(); // token -> sockets
 
-  const httpServer = createHttpServer((req, res) => serveStatic(req, res, opts.staticDir));
+  const httpServer = createHttpServer((req, res) => {
+    if (req.url === '/status') return serveStatus(res);
+    serveStatic(req, res, opts.staticDir);
+  });
+
+  /** Deploy check: a deploy ends every room, so only deploy when `activeMatches` is 0. */
+  function serveStatus(res: ServerResponse) {
+    let activeMatches = 0;
+    for (const room of rooms.values()) if (room.engine && room.engine.state.phase !== 'MATCH_COMPLETE') activeMatches++;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ activeMatches, openRooms: rooms.size }));
+  }
   const io = new SocketServer<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(httpServer, {
     cors: { origin: true },
   });
@@ -90,6 +105,7 @@ export function createGameServer(opts: GameServerOptions = {}) {
     }, Math.min(idleRoomMs, 60_000));
   }
   let closed = false;
+  let shuttingDown = false;
   scheduleIdleSweep();
 
   function attach(socket: GameSocket, room: Room, token: string) {
@@ -102,6 +118,7 @@ export function createGameServer(opts: GameServerOptions = {}) {
 
   io.on('connection', (socket) => {
     socket.on('createRoom', (req, ack) => {
+      if (shuttingDown) return ack({ ok: false, error: 'the server is restarting; try again in a minute' });
       if (typeof req?.name !== 'string') return ack({ ok: false, error: 'name required' });
       const room = createRoom();
       const res = room.addPlayer(req.name);
@@ -177,6 +194,13 @@ export function createGameServer(opts: GameServerOptions = {}) {
     });
   });
 
+  async function close() {
+    closed = true;
+    for (const r of rooms.values()) r.dispose();
+    io.disconnectSockets(true);
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+  }
+
   return {
     httpServer,
     io,
@@ -189,11 +213,13 @@ export function createGameServer(opts: GameServerOptions = {}) {
         });
       });
     },
-    async close() {
-      closed = true;
-      for (const r of rooms.values()) r.dispose();
-      io.disconnectSockets(true);
-      await new Promise<void>((resolve) => io.close(() => resolve()));
+    close,
+    /** Graceful stop for a deploy: refuse new rooms, tell every client, then close. */
+    async shutdown() {
+      shuttingDown = true;
+      io.emit('roomClosed', SERVER_RESTARTING_NOTICE);
+      await new Promise<void>((resolve) => clock.setTimeout(resolve, opts.shutdownGraceMs ?? 1_000));
+      await close();
     },
   };
 }
