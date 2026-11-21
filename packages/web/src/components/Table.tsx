@@ -376,8 +376,9 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
   }, [game.seats, me]);
 
   const isMyTurn = game.phase === 'TRADING' && game.turnSeat === me && !game.pendingCounter;
-  // On a phone the panel is pinned to the bottom of the screen while the player has something to do.
-  const needsMe = isMyTurn || game.pendingCounter?.target === me;
+  // On a phone the panel is pinned to the bottom of the screen only while the player can act on their
+  // turn. A counter-offer awaiting them is answered in the counter-offer modal instead.
+  const pinned = isMyTurn;
   const waitingOn = game.pendingCounter
     ? game.pendingCounter.from === me
       ? `Waiting for ${game.seats[game.pendingCounter.target].name} to answer your counter-offer`
@@ -424,7 +425,7 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
   }
 
   return (
-    <div className={`panel stack action-panel ${needsMe ? 'pinned' : ''}`} data-testid="action-panel">
+    <div className={`panel stack action-panel ${pinned ? 'pinned' : ''}`} data-testid="action-panel">
       <h2>{isMyTurn ? 'Your move' : 'Prices on the table'}</h2>
       <div className="best-levels">
         <div className="best bid">
