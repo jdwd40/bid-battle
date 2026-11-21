@@ -100,22 +100,34 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
   const counterModal = pending && pending.target === me && <CounterModal game={game} offset={offset} onCommand={onCommand} />;
 
   if (phone) {
-    // Phone layout: status bar, card strip, then the quote form or action area, then everything else.
-    // During quote preparation the quote form shows errors directly above its Confirm button.
+    // Phone layout: status bar and card strip, then during quote preparation the quote form (errors directly
+    // above its Confirm) before the trader rows, and during trading the trader rows before the action area.
+    const traderRows = (
+      <div className="trader-rows">
+        {game.seats.map((s) => (
+          <TraderRow key={s.index} seat={s} game={game} view={view} isMe={s.index === me} />
+        ))}
+      </div>
+    );
+    const phoneStats = <PhoneStats game={game} />;
     return (
       <div className="stack table-phone">
         {statusBar}
         <CardStrip game={game} />
         {prep ? (
-          <QuotePanel game={game} onCommand={onCommand} compact error={errorBox} />
+          <>
+            <QuotePanel game={game} onCommand={onCommand} compact error={errorBox} />
+            {traderRows}
+            {phoneStats}
+          </>
         ) : (
           <>
+            {traderRows}
+            {phoneStats}
             {errorBox}
             <ActionPanel game={game} onCommand={onCommand} />
           </>
         )}
-        {seats}
-        <div className="panel my-hand">{stats}</div>
         {/* Collapsible sections below the play area. The coach is keyed by round so it reopens or recollapses as each round starts. */}
         <PhoneCoach key={game.round} game={game} />
         <ActivityFeed events={game.events} seats={game.seats} collapsible />
@@ -267,6 +279,84 @@ function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView
             Ask — sells at
             <strong data-testid={`ask-${seat.index}`}>{seat.quote.ask === undefined ? '—' : fmt(seat.quote.ask)}</strong>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Phones: one trader as a compact row (name and badges, bid, ask, position, balance) in place of a seat tile.
+ * It keeps the seat tile's test ids: seat-N on the row, bid-N and ask-N on the prices, takeover-N on the badge.
+ */
+function TraderRow({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView; view: ClientView; isMe: boolean }) {
+  const trading = game.phase === 'TRADING';
+  const active = trading && game.turnSeat === seat.index;
+  const takenOver = view.botControlled[seat.index] && !seat.isBot;
+  const status = game.phase === 'QUOTE_PREPARATION' ? (seat.sealedQuoteConfirmed ? 'Confirmed' : 'Preparing…') : trading && seat.hasActedThisCycle && !active ? 'Acted' : null;
+  const price = (side: 'bid' | 'ask') => {
+    const value = seat.quote[side];
+    return (
+      <span className={`tr-price ${side} ${value === undefined ? 'empty' : ''}`} title={side === 'bid' ? 'Bid: buys at' : 'Ask: sells at'}>
+        <span className="tr-label">{side === 'bid' ? 'Bid' : 'Ask'}</span>
+        <strong data-testid={`${side}-${seat.index}`}>{value === undefined ? '—' : fmt(value)}</strong>
+      </span>
+    );
+  };
+  return (
+    <div className={`trader-row ${active ? 'active' : ''} ${isMe ? 'me' : ''}`} data-testid={`seat-${seat.index}`} aria-current={active ? 'true' : undefined}>
+      <div className="tr-who">
+        <span className="tr-name">{seat.name}</span>
+        <span className="tr-badges">
+          {isMe && <span className="pill you">You</span>}
+          {active && <span className="pill turn">Acting</span>}
+          {seat.isBot && <span className="pill bot">Bot · {difficultyLabel(seat.difficulty)}</span>}
+          {takenOver && (
+            <span className="pill warn" data-testid={`takeover-${seat.index}`} title="Takeover: bot playing until they reconnect">
+              Takeover
+            </span>
+          )}
+          {status && <span className="tr-status">{status}</span>}
+        </span>
+      </div>
+      {trading ? (
+        <>
+          {price('bid')}
+          {price('ask')}
+        </>
+      ) : (
+        <span className="tr-quote-hidden muted">Quotes sealed</span>
+      )}
+      <span className="tr-num" title="Position">
+        <span className="tr-label">Pos</span>
+        {fmtPosition(seat.position)}
+      </span>
+      <span className="tr-num num" title="Balance">
+        <span className="tr-label">Bal</span>
+        {seat.balance}
+      </span>
+    </div>
+  );
+}
+
+/** Phones: Available and Position in the play area; Balance, Cashflow and Reserved risk behind Details. */
+function PhoneStats({ game }: { game: PlayerView }) {
+  const [open, setOpen] = useState(false);
+  const local = game.me!;
+  return (
+    <div className="phone-stats">
+      <div className="phone-stats-main">
+        <Stat label="Available" value={`${local.available}`} testId="available" />
+        <Stat label="Position" value={fmtPosition(local.portfolio.q)} testId="position" />
+        <button type="button" className="btn btn-sm details-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="stat-details">
+          {open ? 'Hide details' : 'Details'}
+        </button>
+      </div>
+      {open && (
+        <div className="phone-stats-more">
+          <Stat label="Balance" value={`${game.seats[game.seat!].balance}`} testId="balance" />
+          <Stat label="Cashflow" value={fmtSigned(local.portfolio.C)} />
+          <Stat label="Reserved risk" value={`${local.reserved}`} testId="reserved" />
         </div>
       )}
     </div>
