@@ -5,6 +5,7 @@ import { secureRng, type MatchConfig, type Rng } from '@bid-battle/engine';
 import { realClock, type Clock } from './clock.js';
 import type { ClientToServerEvents, ServerToClientEvents } from './protocol.js';
 import { Room } from './room.js';
+import { createLimits, LIMIT_ERRORS, type LimitOptions } from './limits.js';
 
 export interface GameServerOptions {
   clock?: Clock;
@@ -17,6 +18,8 @@ export interface GameServerOptions {
   audit?: boolean;
   /** Rooms with no connected humans are removed after this many ms. */
   idleRoomMs?: number;
+  /** Abuse limits (room creation per IP, open-room cap, message rate). Defaults in `DEFAULT_LIMITS`. */
+  limits?: LimitOptions;
   /**
    * Origins (scheme://host[:port]) allowed to open a Socket.IO connection. Handshakes carrying any
    * other `Origin` header are refused. When omitted, only the local dev origins are allowed: the
@@ -46,6 +49,7 @@ export function createGameServer(opts: GameServerOptions = {}) {
   const rng = opts.rng ?? secureRng();
   const botDelayMs = opts.botDelayMs ?? 900;
   const idleRoomMs = opts.idleRoomMs ?? 10 * 60_000;
+  const limits = createLimits(clock, opts.limits);
   const rooms = new Map<string, Room>();
   const tokenToRoom = new Map<string, string>();
   const sockets = new Map<string, Set<GameSocket>>(); // token -> sockets
@@ -120,8 +124,19 @@ export function createGameServer(opts: GameServerOptions = {}) {
   }
 
   io.on('connection', (socket) => {
+    const clientIp = limits.clientIp(socket.handshake);
+    const meter = limits.messageMeter();
+    // Over the rate: drop the message and answer its ack with an error; the connection stays open.
+    socket.use((packet, next) => {
+      if (meter.allow()) return next();
+      const ack = packet[packet.length - 1];
+      if (typeof ack === 'function') ack({ ok: false, error: LIMIT_ERRORS.messageRate });
+    });
+
     socket.on('createRoom', (req, ack) => {
       if (typeof req?.name !== 'string') return ack({ ok: false, error: 'name required' });
+      const refused = limits.claimRoom(clientIp, rooms.size);
+      if (refused) return ack({ ok: false, error: refused });
       const room = createRoom();
       const res = room.addPlayer(req.name);
       if (!res.ok) {
