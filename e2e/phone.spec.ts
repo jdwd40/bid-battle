@@ -23,6 +23,32 @@ async function readTutorial(page: Page): Promise<void> {
   await expect(tutorial).toHaveCount(0);
 }
 
+test('in landscape the tutorial keeps its navigation and close buttons in view on every step', async ({ page }) => {
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.goto('/');
+  await page.getByTestId('name-input').fill('Sideways');
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('start-match').click();
+
+  const tutorial = page.getByTestId('tutorial');
+  await expect(tutorial).toBeVisible();
+  for (let step = 1; ; step++) {
+    const done = page.getByTestId('tutorial-done');
+    const last = await done.isVisible();
+    const forward = last ? done : page.getByTestId('tutorial-next');
+    // No scrolling first: the buttons must be in view as the step opens.
+    await expectFullyInViewport(forward, page.getByTestId('tutorial-close'));
+    await expectNoHorizontalOverflow(page, `landscape tutorial step ${step}`);
+    const sideways = await tutorial.evaluate((el) =>
+      Math.max(el.scrollWidth - el.clientWidth, ...Array.from(el.querySelectorAll<HTMLElement>('*')).map((c) => c.scrollWidth - c.clientWidth)),
+    );
+    expect(sideways, `landscape tutorial step ${step} scrolls sideways`).toBeLessThanOrEqual(0);
+    await forward.click();
+    if (last) break;
+  }
+  await expect(tutorial).toHaveCount(0);
+});
+
 test('a counter-offer awaiting me shows its modal fully in view, and the action panel is not pinned', async ({ page, browser }) => {
   await page.goto('/');
   await page.getByTestId('name-input').fill('Pocket');
