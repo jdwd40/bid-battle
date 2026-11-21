@@ -1107,6 +1107,152 @@ table.data th.num {
   }
 }
 
+/* ---------- phone table layout (rendered only below the phone breakpoint, see usePhoneLayout) ---------- */
+
+.table-phone {
+  gap: 8px;
+}
+
+.card.xs {
+  width: 34px;
+  height: 46px;
+  font-size: 1rem;
+  border-radius: 6px;
+}
+
+.card.xs .corner {
+  display: none;
+}
+
+/* Too small for the word; the red face still marks a negative card. */
+.card.xs.negative::after {
+  content: none;
+}
+
+.card.xs.hidden::before {
+  font-size: 1.1rem;
+}
+
+/* The private card and the community cards in one short row. */
+.card-strip {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--line);
+}
+
+.card-strip .slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.62rem;
+  line-height: 1.2;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.card-strip .slot.mine {
+  color: var(--accent);
+  font-weight: 800;
+  padding-right: 12px;
+  border-right: 1px solid var(--line);
+}
+
+/* The compact quote form: Bid and Ask side by side, then messages, Confirm, and Suggest/Skip. */
+.quote-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
+.quote-compact .quote-form {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.quote-compact .quote-form .side {
+  padding: 4px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.quote-compact .toggle {
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quote-compact .side.bid .toggle.on {
+  background: var(--buy);
+}
+
+.quote-compact .side.ask .toggle.on {
+  background: var(--sell);
+}
+
+.quote-compact .stepper {
+  gap: 4px;
+}
+
+.quote-compact .stepper .btn-sm {
+  flex: none;
+  width: 36px;
+  min-height: 44px;
+  padding: 0;
+}
+
+.quote-compact .stepper .input-num {
+  min-width: 0;
+  width: 100%;
+  padding: 4px;
+  font-size: 16px; /* stops iOS zooming into the field on focus */
+}
+
+.quote-compact .side-off {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quote-compact .error,
+.quote-compact .hint {
+  padding: 6px 10px;
+}
+
+.quote-compact .quote-status {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quote-compact > .btn,
+.quote-extras .btn {
+  min-height: 44px;
+}
+
+.quote-compact > .btn-block {
+  width: 100%;
+}
+
+.quote-extras {
+  display: flex;
+  gap: 8px;
+}
+
+.quote-extras .btn {
+  flex: 1;
+  padding: 6px 8px;
+}
+
 /* ---------- coaching & tutorial ---------- */
 
 .coach {

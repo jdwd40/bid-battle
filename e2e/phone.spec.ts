@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { expectFixedCoverageAtMost, expectFullyInViewport, expectNoHorizontalOverflow } from './support/layout';
 
 // Runs only in the `phone` project (see playwright.config.ts): an iPhone SE-sized (375×667) touch viewport, on a
@@ -83,6 +83,7 @@ test('a counter-offer awaiting me shows its modal fully in view, and the action 
     if (await rival.getByTestId('counter').isEnabled()) {
       await rival.getByTestId('counter').click({ timeout: 1_000 });
       await rival.getByTestId('counter-target').selectOption('ask:0');
+      await expectPhonePriceInput(rival.getByTestId('counter-price'));
       await rival.getByTestId('counter-price').fill('79');
       await rival.getByTestId('send-counter').click({ timeout: 1_000 });
     }
@@ -165,3 +166,57 @@ test('the status bar keeps the timer and my fair estimate in view while I scroll
   await expectFullyInViewport(timer, estimate);
   await expectFixedCoverageAtMost(page, 0.12, 'table scrolled to the bottom');
 });
+
+test('during quote preparation the whole quote form is on my first screen', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('name-input').fill('Pocket');
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('start-match').click();
+  await page.getByTestId('tutorial-close').click();
+  await expect(page.getByTestId('quote-panel')).toBeVisible();
+  // No scrolling: tapping Start further down the lobby must not leave the table scrolled past the form.
+
+  // My private card and the community cards share one strip above the form.
+  const strip = page.getByTestId('card-strip');
+  await expect(strip.getByTestId('card')).toHaveCount(4);
+  await expect(strip).toContainText('Yours');
+  await expect(strip).toContainText('Settlement');
+
+  const bid = page.getByTestId('bid-input');
+  const ask = page.getByTestId('ask-input');
+  const confirm = page.getByTestId('confirm-quote');
+  await expectFullyInViewport(strip, page.getByTestId('use-bid'), page.getByTestId('use-ask'), bid, ask, confirm);
+  await expectNoHorizontalOverflow(page, 'quote form');
+
+  for (const id of ['use-bid', 'use-ask']) {
+    const box = (await page.getByTestId(id).boundingBox())!;
+    expect(box.height, `${id} tap height`).toBeGreaterThanOrEqual(44);
+  }
+  for (const input of [bid, ask]) await expectPhonePriceInput(input);
+
+  // A refused quote (bid above ask) says why directly above Confirm.
+  await bid.fill('60');
+  await ask.fill('40');
+  await expect(confirm).toBeDisabled();
+  const refusal = page.getByTestId('quote-error');
+  await expect(refusal).toBeVisible();
+  await expectDirectlyAbove(refusal, confirm);
+  await expectFullyInViewport(refusal, confirm);
+});
+
+/** A price input brings up a numeric keypad and has text large enough that iOS doesn't zoom on focus. */
+async function expectPhonePriceInput(input: Locator): Promise<void> {
+  await expect(input).toHaveAttribute('inputmode', 'numeric');
+  const size = await input.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  expect(size, 'price input text size').toBeGreaterThanOrEqual(16);
+}
+
+/** `upper` sits right above `lower`: at most a small gap between them, and they overlap horizontally. */
+async function expectDirectlyAbove(upper: Locator, lower: Locator): Promise<void> {
+  const a = (await upper.boundingBox())!;
+  const b = (await lower.boundingBox())!;
+  const gap = b.y - (a.y + a.height);
+  expect(gap, 'gap between the message and the control below it').toBeGreaterThanOrEqual(0);
+  expect(gap, 'gap between the message and the control below it').toBeLessThanOrEqual(16);
+  expect(Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x), 'horizontal overlap').toBeGreaterThan(0);
+}

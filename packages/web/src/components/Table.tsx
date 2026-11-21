@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   applyBuy,
   applySell,
@@ -20,6 +20,7 @@ import { ActivityFeed } from './ActivityFeed';
 import { Card } from './Card';
 import { Countdown } from './Countdown';
 import { HelpPanel } from './HelpPanel';
+import { usePhoneLayout } from '../usePhoneLayout';
 
 interface Props {
   view: ClientView;
@@ -41,46 +42,101 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
   const timerLabel = prep ? 'Confirm your quote' : pending ? 'Counter-offer response' : game.turnSeat === me ? 'Your turn' : `${game.seats[game.turnSeat ?? 0]?.name ?? ''}'s turn`;
   const timerTotal = prep ? TIMER_TOTALS.QUOTE_PREPARATION : pending ? TIMER_TOTALS.COUNTER : TIMER_TOTALS.TURN;
   const estimate = myFairEstimate(game);
+  const phone = usePhoneLayout();
+
+  // On a phone the quote form sits near the top, so each quote preparation (including the first, after
+  // tapping Start further down the lobby) starts scrolled to the top with the whole form in view.
+  const prepKey = prep ? `${game.round}-${game.cycle}` : null;
+  useEffect(() => {
+    if (phone && prepKey !== null) window.scrollTo(0, 0);
+  }, [phone, prepKey]);
+
+  const statusBar = (
+    // On phones this header is the sticky status bar (see styles.css).
+    <div className="table-head" data-testid="status-bar">
+      <div className="meta">
+        <strong>
+          Round {game.round}/{game.totalRounds}
+        </strong>
+        <span>
+          Cycle {game.cycle}/{game.cyclesPerRound}
+        </span>
+        <span className="pill" data-testid="phase">
+          {phaseLabel(game.phase)}
+        </span>
+        <span className="muted small">
+          Public range {fmt(game.publicRange.L)} to {fmt(game.publicRange.U)}
+        </span>
+        {estimate !== null && (
+          <span className="fair-estimate" data-testid="fair-estimate" title="Your fair estimate of the settlement value">
+            Fair <strong>{Math.round(estimate)}</strong>
+          </span>
+        )}
+      </div>
+      <Countdown deadline={game.deadline} offset={offset} totalMs={timerTotal} label={timerLabel} />
+    </div>
+  );
+  const seats = (
+    <div className="seats">
+      {game.seats.map((s) => (
+        <SeatTile key={s.index} seat={s} game={game} view={view} isMe={s.index === me} />
+      ))}
+    </div>
+  );
+  const stats = (
+    <div className="stat-grid">
+      <Stat label="Balance" value={`${mySeat.balance}`} testId="balance" />
+      <Stat label="Position" value={fmtPosition(local.portfolio.q)} testId="position" />
+      <Stat label="Cashflow" value={fmtSigned(local.portfolio.C)} />
+      <Stat label="Reserved risk" value={`${local.reserved}`} testId="reserved" />
+      <Stat label="Available" value={`${local.available}`} testId="available" />
+    </div>
+  );
+  const errorBox = error && (
+    <div className="error" role="alert" data-testid="error">
+      {error}
+    </div>
+  );
+  const counterModal = pending && pending.target === me && <CounterModal game={game} offset={offset} onCommand={onCommand} />;
+
+  if (phone) {
+    // Phone layout: status bar, card strip, then the quote form or action area, then everything else.
+    // During quote preparation the quote form shows errors directly above its Confirm button.
+    return (
+      <div className="stack table-phone">
+        {statusBar}
+        <CardStrip game={game} />
+        {prep ? (
+          <QuotePanel game={game} onCommand={onCommand} compact error={errorBox} />
+        ) : (
+          <>
+            {errorBox}
+            <ActionPanel game={game} onCommand={onCommand} />
+          </>
+        )}
+        {seats}
+        <div className="panel my-hand">{stats}</div>
+        <CoachBox game={game} />
+        <ActivityFeed events={game.events} seats={game.seats} />
+        <HelpPanel />
+        {counterModal}
+      </div>
+    );
+  }
 
   return (
     <div className="stack">
-      {/* On phones this header is the sticky status bar (see styles.css). */}
-      <div className="table-head" data-testid="status-bar">
-        <div className="meta">
-          <strong>
-            Round {game.round}/{game.totalRounds}
-          </strong>
-          <span>
-            Cycle {game.cycle}/{game.cyclesPerRound}
-          </span>
-          <span className="pill" data-testid="phase">
-            {phaseLabel(game.phase)}
-          </span>
-          <span className="muted small">
-            Public range {fmt(game.publicRange.L)} to {fmt(game.publicRange.U)}
-          </span>
-          {estimate !== null && (
-            <span className="fair-estimate" data-testid="fair-estimate" title="Your fair estimate of the settlement value">
-              Fair <strong>{Math.round(estimate)}</strong>
-            </span>
-          )}
-        </div>
-        <Countdown deadline={game.deadline} offset={offset} totalMs={timerTotal} label={timerLabel} />
-      </div>
+      {statusBar}
 
       <div className="table-grid">
         <div className="table-main">
-          <div className="seats">
-            {game.seats.map((s) => (
-              <SeatTile key={s.index} seat={s} game={game} view={view} isMe={s.index === me} />
-            ))}
-          </div>
+          {seats}
 
           <div className="community" data-testid="community">
             {game.communityCards.map((c, i) => (
               <div className="slot" key={i}>
                 <Card value={c} label={`Community ${i + 1}`} />
-                <span>{c === null ? (i === game.cyclesPerRound - 1 ? 'Settlement' : `Cycle ${i + 2}`) : 'Revealed'}</span>
+                <span>{revealLabel(game, i)}</span>
               </div>
             ))}
           </div>
@@ -90,20 +146,10 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
               <Card value={mySeat.privateCard} size="lg" label="Your private card" />
               <span className="muted small">Your private card</span>
             </div>
-            <div className="stat-grid">
-              <Stat label="Balance" value={`${mySeat.balance}`} testId="balance" />
-              <Stat label="Position" value={fmtPosition(local.portfolio.q)} testId="position" />
-              <Stat label="Cashflow" value={fmtSigned(local.portfolio.C)} />
-              <Stat label="Reserved risk" value={`${local.reserved}`} testId="reserved" />
-              <Stat label="Available" value={`${local.available}`} testId="available" />
-            </div>
+            {stats}
           </div>
 
-          {error && (
-            <div className="error" role="alert" data-testid="error">
-              {error}
-            </div>
-          )}
+          {errorBox}
 
           <CoachBox game={game} />
 
@@ -116,7 +162,30 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
         </div>
       </div>
 
-      {pending && pending.target === me && <CounterModal game={game} offset={offset} onCommand={onCommand} />}
+      {counterModal}
+    </div>
+  );
+}
+
+/** Under a community card: when it will be revealed, or that it has been. */
+function revealLabel(game: PlayerView, i: number): string {
+  return game.communityCards[i] === null ? (i === game.cyclesPerRound - 1 ? 'Settlement' : `Cycle ${i + 2}`) : 'Revealed';
+}
+
+/** Phones: the private card, marked as the player's own, and the community cards in one short row. */
+function CardStrip({ game }: { game: PlayerView }) {
+  return (
+    <div className="card-strip" data-testid="card-strip">
+      <div className="slot mine">
+        <Card value={game.seats[game.seat!].privateCard} size="xs" label="Your private card" />
+        <span>Yours</span>
+      </div>
+      {game.communityCards.map((c, i) => (
+        <div className="slot" key={i}>
+          <Card value={c} size="xs" label={`Community ${i + 1}`} />
+          <span>{revealLabel(game, i)}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -192,7 +261,11 @@ function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView
 
 // ---------------- quote preparation ----------------
 
-function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['onCommand'] }) {
+/**
+ * The sealed-quote form. `compact` is the phone form: Bid and Ask side by side, Confirm full width below,
+ * and `error` (a refused command's message) plus any problem with the prices directly above Confirm.
+ */
+function QuotePanel({ game, onCommand, compact = false, error = null }: { game: PlayerView; onCommand: Props['onCommand']; compact?: boolean; error?: ReactNode }) {
   const local = game.me!;
   const sealed = local.sealedQuote;
   const starter = suggestedQuote(game);
@@ -264,6 +337,85 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
     );
   }
 
+  if (compact) {
+    const sides = [
+      { side: 'bid' as const, name: 'Bid', verb: 'buy', use: useBid, setUse: setUseBid, value: bid, setValue: setBid },
+      { side: 'ask' as const, name: 'Ask', verb: 'sell', use: useAsk, setUse: setUseAsk, value: ask, setValue: setAsk },
+    ];
+    return (
+      <div className="panel quote-compact" data-testid="quote-panel">
+        <div className="quote-form">
+          {sides.map((s) => (
+            <div className={`side ${s.side}`} key={s.side}>
+              <button type="button" className={`toggle ${s.use ? 'on' : ''}`} aria-pressed={s.use} onClick={() => s.setUse((v) => !v)} data-testid={`use-${s.side}`}>
+                {s.name} · {s.use ? `I ${s.verb} at` : 'off'}
+              </button>
+              {s.use ? (
+                <div className="stepper">
+                  <button type="button" className="btn btn-sm" onClick={() => step(s.setValue, s.value, -1)} aria-label={`Lower ${s.side} by one`}>
+                    −
+                  </button>
+                  <input
+                    className="input input-num"
+                    type="number"
+                    inputMode="numeric"
+                    step={1}
+                    value={s.value}
+                    onChange={(e) => s.setValue(e.target.value)}
+                    aria-label={`${s.name} price`}
+                    data-testid={`${s.side}-input`}
+                  />
+                  <button type="button" className="btn btn-sm" onClick={() => step(s.setValue, s.value, 1)} aria-label={`Raise ${s.side} by one`}>
+                    +
+                  </button>
+                </div>
+              ) : (
+                <div className="side-off muted small">Not {s.verb === 'buy' ? 'buying' : 'selling'}</div>
+              )}
+            </div>
+          ))}
+        </div>
+        {error}
+        {posting && problem ? (
+          <div className="hint" role="status" data-testid="quote-error">
+            Cannot post yet: {problem}.
+          </div>
+        ) : (
+          <div className="muted small quote-status" role="status">
+            {posting ? `Most you could lose if traded against: ${ev!.reserved} of ${local.portfolio.B}` : 'Posting no prices this cycle'}
+          </div>
+        )}
+        <button className="btn btn-primary btn-block" disabled={busy || (posting && Boolean(problem))} onClick={() => confirmQuote(false)} data-testid="confirm-quote">
+          {posting ? 'Confirm my prices' : 'Confirm: no prices'}
+        </button>
+        <div className="quote-extras">
+          {suggestion && (
+            <button
+              className="btn"
+              onClick={() => {
+                setUseBid(suggestUse('bid'));
+                setUseAsk(suggestUse('ask'));
+                if (suggestion.bid !== undefined) setBid(String(suggestion.bid));
+                if (suggestion.ask !== undefined) setAsk(String(suggestion.ask));
+              }}
+              data-testid="suggest-quote"
+            >
+              Suggest prices
+            </button>
+          )}
+          <button className="btn" disabled={busy} onClick={() => confirmQuote(true)} data-testid="skip-quote">
+            Skip this cycle
+          </button>
+        </div>
+        {starter?.reason && (
+          <div className="muted small" data-testid="no-suggestion">
+            No suggested prices: {starter.reason}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="panel stack" data-testid="quote-panel">
       <h2>Set your two prices</h2>
@@ -284,7 +436,7 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
               <button type="button" className="btn btn-sm" onClick={() => step(setBid, bid, -1)} aria-label="Lower bid by one">
                 −1
               </button>
-              <input className="input input-num" type="number" step={1} value={bid} onChange={(e) => setBid(e.target.value)} aria-label="Bid price" data-testid="bid-input" />
+              <input className="input input-num" type="number" inputMode="numeric" step={1} value={bid} onChange={(e) => setBid(e.target.value)} aria-label="Bid price" data-testid="bid-input" />
               <button type="button" className="btn btn-sm" onClick={() => step(setBid, bid, 1)} aria-label="Raise bid by one">
                 +1
               </button>
@@ -306,7 +458,7 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
               <button type="button" className="btn btn-sm" onClick={() => step(setAsk, ask, -1)} aria-label="Lower ask by one">
                 −1
               </button>
-              <input className="input input-num" type="number" step={1} value={ask} onChange={(e) => setAsk(e.target.value)} aria-label="Ask price" data-testid="ask-input" />
+              <input className="input input-num" type="number" inputMode="numeric" step={1} value={ask} onChange={(e) => setAsk(e.target.value)} aria-label="Ask price" data-testid="ask-input" />
               <button type="button" className="btn btn-sm" onClick={() => step(setAsk, ask, 1)} aria-label="Raise ask by one">
                 +1
               </button>
@@ -318,7 +470,7 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
         </div>
       </div>
       {posting && problem ? (
-        <div className="hint" role="status">
+        <div className="hint" role="status" data-testid="quote-error">
           Cannot post yet: {problem}. Prices must be whole numbers between {fmt(game.publicRange.L)} and {fmt(game.publicRange.U)}, with the bid below the ask.
         </div>
       ) : posting ? (
@@ -524,7 +676,7 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
           </label>
           <label className="field">
             Your price ({chosen.side === 'ask' ? 'you would buy' : 'you would sell'} one contract)
-            <input className="input input-num" type="number" step={1} value={counterPrice} onChange={(e) => setCounterPrice(e.target.value)} data-testid="counter-price" />
+            <input className="input input-num" type="number" inputMode="numeric" step={1} value={counterPrice} onChange={(e) => setCounterPrice(e.target.value)} data-testid="counter-price" />
           </label>
           {counterProblem ? (
             <div className="hint">Cannot send: {counterProblem}.</div>
