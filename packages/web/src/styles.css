@@ -1045,8 +1045,8 @@ table.data th.num {
     grid-template-columns: 1fr 1fr;
   }
 
+  /* Toggles only appear in the compact quote form on phones, which sizes them (.quote-compact .toggle). */
   .btn-sm,
-  .toggle,
   .input {
     min-height: 44px;
   }
@@ -1192,6 +1192,25 @@ table.data th.num {
   justify-content: center;
 }
 
+/* Landscape phones are short: each side's toggle sits beside its price, so Confirm stays on the first screen. */
+@media (max-height: 500px) {
+  .quote-compact .quote-form .side {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .quote-compact .toggle {
+    width: auto;
+    flex: 0 1 auto;
+  }
+
+  .quote-compact .stepper,
+  .quote-compact .side-off {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
 .quote-compact .error,
 .quote-compact .hint {
   padding: 6px 10px;
@@ -1231,8 +1250,7 @@ table.data th.num {
 
 .trader-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px 44px 48px 48px;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) 40px 40px 56px 52px;
   align-items: center;
   padding: 4px 8px;
   border: 1px solid var(--line);

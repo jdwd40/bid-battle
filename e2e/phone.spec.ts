@@ -155,7 +155,7 @@ test('the status bar keeps the timer and my fair estimate in view while I scroll
   const statusBar = page.getByTestId('status-bar');
   const timer = statusBar.getByTestId('countdown');
   const estimate = statusBar.getByTestId('fair-estimate');
-  await expect(estimate).toHaveText(/^Fair \d+$/);
+  await expect(estimate).toHaveText(/^Fair estimate \d+$/);
 
   await page.evaluate(() => window.scrollTo(0, 0));
   await expectFullyInViewport(timer, estimate);
@@ -202,6 +202,21 @@ test('during quote preparation the whole quote form is on my first screen', asyn
   await expect(refusal).toBeVisible();
   await expectDirectlyAbove(refusal, confirm);
   await expectFullyInViewport(refusal, confirm);
+});
+
+test('in landscape the quote prices and Confirm are on my first screen during quote preparation', async ({ page }) => {
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.goto('/');
+  await page.getByTestId('name-input').fill('Sideways');
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('start-match').click();
+  await page.getByTestId('tutorial-close').click();
+  await expect(page.getByTestId('quote-panel')).toBeVisible();
+
+  // No scrolling: the table opens at the top with the form's inputs and Confirm in view.
+  await expectFullyInViewport(page.getByTestId('bid-input'), page.getByTestId('ask-input'), page.getByTestId('confirm-quote'));
+  await expectUncovered(page.getByTestId('confirm-quote'));
+  await expectNoHorizontalOverflow(page, 'landscape quote form');
 });
 
 test('during trading every trader is a compact row right below the card strip, and my stat details are one tap away', async ({ page }) => {
