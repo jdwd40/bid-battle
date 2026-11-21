@@ -45,5 +45,5 @@ server.listen(port).then((p) => {
   console.log('Rooms are in memory only: restarting the server clears all active matches.');
 });
 
-// Host stop signal (Fly sends SIGTERM on deploy): warn every room, then exit.
+// Stop signal (systemd sends SIGTERM on stop and restart): warn every room, then exit.
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => void server.shutdown().then(() => process.exit(0)));

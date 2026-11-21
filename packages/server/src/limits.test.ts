@@ -23,7 +23,7 @@ function client(port: number, ip?: string): Socket {
   const s = connect(`http://127.0.0.1:${port}`, {
     transports: ['websocket'],
     forceNew: true,
-    extraHeaders: ip ? { 'Fly-Client-IP': ip } : undefined,
+    extraHeaders: ip ? { 'X-Real-IP': ip } : undefined,
   });
   sockets.push(s);
   return s;
@@ -38,7 +38,7 @@ describe('room creation limits', () => {
     const clock = new FakeClock();
     const port = await start({
       clock,
-      limits: { roomsPerIp: 2, roomWindowMs: 60_000, clientIpHeader: 'Fly-Client-IP' },
+      limits: { roomsPerIp: 2, roomWindowMs: 60_000, clientIpHeader: 'X-Real-IP' },
     });
     const a = client(port, '203.0.113.1');
     const b = client(port, '203.0.113.2');
@@ -59,7 +59,7 @@ describe('room creation limits', () => {
   });
 
   it('refuses new rooms once the open-room cap is reached, and allows one when a room closes', async () => {
-    const port = await start({ clock: new FakeClock(), limits: { maxOpenRooms: 2, clientIpHeader: 'Fly-Client-IP' } });
+    const port = await start({ clock: new FakeClock(), limits: { maxOpenRooms: 2, clientIpHeader: 'X-Real-IP' } });
     const a = client(port, '198.51.100.1');
     const b = client(port, '198.51.100.2');
     const c = client(port, '198.51.100.3');

@@ -1,0 +1,63 @@
+# Bid Battle game server on app-server (docs/adr/0001). Installed by scripts/deploy.sh.
+# Serves the web client and Socket.IO on 127.0.0.1:3220 only; nginx (bidbattle.jdwd40.com) terminates TLS
+# and proxies to it. Every room lives in this one process's memory: a restart ends every match.
+[Unit]
+Description=Bid Battle game server (bidbattle.jdwd40.com)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=bid-battle
+Group=bid-battle
+WorkingDirectory=/srv/bid-battle/current
+Environment=NODE_ENV=production PORT=3220 UV_THREADPOOL_SIZE=2
+Environment=ALLOWED_ORIGINS=https://bidbattle.jdwd40.com
+# nginx sets X-Real-IP to the client's address; the port is unreachable except from localhost, so it can't be faked
+Environment=CLIENT_IP_HEADER=X-Real-IP
+ExecStart=/usr/bin/node --max-old-space-size=128 packages/server/dist/index.js
+Restart=on-failure
+RestartSec=3
+# SIGTERM: refuse new rooms, tell every player the server is restarting, wait a second, exit
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# only nginx on this host may reach the port
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+# resource limits on the shared host
+MemoryMax=256M
+MemoryHigh=200M
+MemorySwapMax=0
+CPUQuota=60%
+TasksMax=48
+LimitNOFILE=1024
+
+# hardening: an unprivileged user that can read its release and nothing else
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

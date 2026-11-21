@@ -10,7 +10,7 @@ export interface LimitOptions {
   maxOpenRooms?: number;
   /** Socket messages one connection may send per second (default 20). */
   messagesPerSecond?: number;
-  /** Trusted header carrying the client IP (e.g. `Fly-Client-IP`). Unset: the socket's remote address. */
+  /** Trusted header carrying the client IP (e.g. `X-Real-IP` behind nginx). Unset: the socket's remote address. */
   clientIpHeader?: string;
 }
 

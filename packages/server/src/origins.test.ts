@@ -38,11 +38,11 @@ function handshake(port: number, origin: string, transport: 'websocket' | 'polli
 
 describe('allowed origins', () => {
   it('refuses a handshake from a disallowed origin and accepts the allowed one', async () => {
-    const port = await start({ allowedOrigins: ['https://bid-battle.fly.dev'] });
+    const port = await start({ allowedOrigins: ['https://bidbattle.jdwd40.com'] });
     expect(await handshake(port, 'https://evil.example')).toBe('refused');
     expect(await handshake(port, 'https://evil.example', 'polling')).toBe('refused');
-    expect(await handshake(port, 'https://bid-battle.fly.dev')).toBe('connected');
-    expect(await handshake(port, 'https://bid-battle.fly.dev', 'polling')).toBe('connected');
+    expect(await handshake(port, 'https://bidbattle.jdwd40.com')).toBe('connected');
+    expect(await handshake(port, 'https://bidbattle.jdwd40.com', 'polling')).toBe('connected');
   });
 
   it('allows only the local dev origins when no origins are configured', async () => {

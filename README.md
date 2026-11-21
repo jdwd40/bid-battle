@@ -38,14 +38,14 @@ Environment variables (see `.env.example`): `PORT`, `BOT_DELAY_MS`, `QUOTE_PREP_
 Abuse limits, also from the environment: `ROOMS_PER_IP` (rooms one IP may create per window, default 5),
 `ROOM_WINDOW_MS` (that window, default 600000 = 10 minutes), `MAX_OPEN_ROOMS` (default 100) and
 `MESSAGES_PER_SECOND` (per connection, default 20). `CLIENT_IP_HEADER` names the trusted header that
-carries the client IP; set it to `Fly-Client-IP` in production. Unset, the socket's remote address is
+carries the client IP; set it to `X-Real-IP` in production, where nginx sets it. Unset, the socket's remote address is
 used, so do not set it when the server is reachable without the proxy (a client could fake the header).
 A refused room creation, or a message over the rate, is answered with an error; the connection stays open.
 The Playwright servers set `ROOMS_PER_IP=1000` because the browser suite creates many rooms from one IP;
 the production default stays 5.
 
 `ALLOWED_ORIGINS` is a comma-separated list of origins allowed to open a game connection (in
-production, the app's own origin, e.g. `https://bid-battle.fly.dev`). Handshakes from any other
+production, the app's own origin, e.g. `https://bidbattle.jdwd40.com`). Handshakes from any other
 `Origin` are refused. Unset, only the local dev origins are allowed: the Vite dev server
 (`http://localhost:5173`) and the server's own port, on `localhost` and `127.0.0.1`. To open the dev
 client from another device on your network, add that address (for example
@@ -68,20 +68,21 @@ client from another device on your network, add that address (for example
 4. The host chooses each empty seat's bot difficulty (Easy / Normal / Hard, default Normal) and
    starts. Empty seats become bots. Nobody can join after the start; reconnecting is not a join.
 
-## Deploying to Fly.io
+## Deploying
 
-Production is one always-running Fly.io machine at https://bid-battle.fly.dev (see
-`docs/adr/0001-single-instance-in-memory-rooms.md`). `Dockerfile` builds the engine, server and web
-client and runs the bundled server, which serves the client on the same port. `fly.toml` keeps
-exactly one machine running with auto-stop off, uses `/health` as the health check, allows 10 s
-between the stop signal and a forced kill, and sets `ALLOWED_ORIGINS=https://bid-battle.fly.dev`
-and `CLIENT_IP_HEADER=Fly-Client-IP`. Deploys are manual, once CI passes:
+Production is one always-running Node process on app-server (a Debian VPS reached through `hermes`),
+at https://bidbattle.jdwd40.com (see `docs/adr/0001-single-instance-in-memory-rooms.md`). The systemd
+unit `deploy/bid-battle.service` runs it as the unprivileged `bid-battle` user on `127.0.0.1:3220`, with
+`ALLOWED_ORIGINS=https://bidbattle.jdwd40.com`, `CLIENT_IP_HEADER=X-Real-IP` and a 10 s window between
+the stop signal and a forced kill. nginx terminates TLS (Let's Encrypt) and proxies to it, WebSockets
+included; that site was created once with `sudo autobuild-nginx-site bidbattle.jdwd40.com 3220`.
 
-1. Install `flyctl` (https://fly.io/docs/flyctl/install/) and log in with `fly auth login`. The
-   first time only, create the app with `fly apps create bid-battle`.
-2. Check that no match is running: `curl https://bid-battle.fly.dev/status` must report 0 active
-   matches. A deploy restarts the server and ends every match in progress.
-3. Run `fly deploy` from the repo root.
+Deploys are manual, from a clean tree, once CI passes: run `scripts/deploy.sh`. It refuses while
+`/status` reports an active match (`--force` overrides, ending it), builds locally, uploads the release to
+`/srv/bid-battle/releases/<time>-<commit>`, installs the server's runtime dependencies there, points
+`/srv/bid-battle/current` at it, installs the unit, restarts the service and waits for `/health`. The five
+newest releases are kept; to roll back, point `current` at an older one and
+`sudo systemctl restart bid-battle`. Logs: `sudo journalctl -u bid-battle`.
 
 `GET /status` returns `{ "activeMatches": n, "openRooms": n }`; an active match is one that has
 started and is not complete. On SIGTERM or SIGINT the server refuses new rooms and joins (rejoining a seat still works), tells every
