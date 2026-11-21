@@ -38,3 +38,64 @@ export async function expectNoHorizontalOverflow(page: Page, where: string): Pro
 export async function expectFullyInViewport(...locators: Locator[]): Promise<void> {
   for (const loc of locators) await expect(loc).toBeInViewport({ ratio: 1 });
 }
+
+/** One fixed or sticky element's on-screen vertical extent, as reported by `measureFixedCoverage`. */
+export interface FixedElement {
+  /** Tag, test id and classes, e.g. `div[data-testid=status-bar].table-head`. */
+  label: string;
+  top: number;
+  bottom: number;
+}
+
+export interface FixedCoverage {
+  /** Share of the viewport height covered by fixed and sticky elements, from 0 to 1. */
+  share: number;
+  viewportHeight: number;
+  /** The elements that contributed, for failure messages. */
+  elements: FixedElement[];
+}
+
+/**
+ * Measure how much of the viewport height is covered by `position: fixed` and `position: sticky`
+ * elements at the current scroll position (no scrolling is done). Overlapping elements, side-by-side
+ * elements and nested ones count once: the result is the union of their vertical extents, clipped
+ * to the viewport. A sticky element counts wherever it currently is on screen, stuck or not.
+ * Measure with no modal open: a full-screen backdrop covers the whole viewport.
+ */
+export async function measureFixedCoverage(page: Page): Promise<FixedCoverage> {
+  return page.evaluate(() => {
+    const height = window.innerHeight;
+    const elements: { label: string; top: number; bottom: number }[] = [];
+    for (const el of Array.from(document.body.querySelectorAll<HTMLElement>('*'))) {
+      const style = getComputedStyle(el);
+      if (style.position !== 'fixed' && style.position !== 'sticky') continue;
+      if (style.visibility === 'hidden') continue;
+      const r = el.getBoundingClientRect();
+      const top = Math.max(0, r.top);
+      const bottom = Math.min(height, r.bottom);
+      if (r.width === 0 || bottom <= top) continue;
+      const id = el.dataset.testid ? `[data-testid=${el.dataset.testid}]` : '';
+      const cls = typeof el.className === 'string' && el.className.trim() ? `.${el.className.trim().split(/\s+/).join('.')}` : '';
+      elements.push({ label: `${el.tagName.toLowerCase()}${id}${cls}`, top: Math.round(top), bottom: Math.round(bottom) });
+    }
+    let covered = 0;
+    let reach = 0;
+    for (const { top, bottom } of [...elements].sort((a, b) => a.top - b.top)) {
+      const from = Math.max(top, reach);
+      if (bottom > from) covered += bottom - from;
+      reach = Math.max(reach, bottom);
+    }
+    return { share: covered / height, viewportHeight: height, elements };
+  });
+}
+
+/**
+ * Assert fixed and sticky elements cover at most `maxShare` (0 to 1) of the viewport height at the
+ * current scroll position, e.g. `expectFixedCoverageAtMost(page, 0.25, 'table on my turn')`.
+ * On failure it lists the covering elements. `where` labels the screen in the failure message.
+ */
+export async function expectFixedCoverageAtMost(page: Page, maxShare: number, where: string): Promise<void> {
+  const { share, viewportHeight, elements } = await measureFixedCoverage(page);
+  const list = elements.map((e) => `${e.label} ${e.top}-${e.bottom}`).join(', ') || 'none';
+  expect(share, `${where}: fixed/sticky elements cover ${Math.round(share * 100)}% of a ${viewportHeight}px viewport (${list})`).toBeLessThanOrEqual(maxShare);
+}
