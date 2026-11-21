@@ -5,7 +5,7 @@ export function validateCommand(x: unknown): string | null {
   const optInt = (k: string) => c[k] === undefined || c[k] === null || Number.isInteger(c[k]);
   const int = (k: string) => Number.isInteger(c[k]);
   switch (c.type) {
-    case 'SUBMIT_QUOTE':
+    case 'SEAL_QUOTE':
       if (!optInt('bid') || !optInt('ask')) return 'prices must be whole numbers';
       if (typeof c.confirm !== 'boolean') return 'confirm flag required';
       return null;

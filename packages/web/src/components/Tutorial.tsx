@@ -11,15 +11,15 @@ const STEPS: Array<{ title: string; body: React.ReactNode }> = [
       <>
         <p>
           Every round, seven cards are dealt: one secret card to each of the four traders and three face-down community cards. At the end of
-          the round all seven are flipped and added up. That total is <strong>the value</strong>.
+          the round all seven are flipped and added up. That sum is the <strong>settlement value</strong>.
         </p>
         <p>
-          You only see your own card, so you have to <strong>guess the total</strong>. You make money by buying contracts when you think the
-          total will be higher than the price, and selling when you think it will be lower.
+          You only see your own card, so you have to <strong>estimate the settlement value</strong>. You make money by buying contracts when you think the
+          settlement value will be higher than the price, and selling when you think it will be lower.
         </p>
         <p className="muted small">
-          Cards run from 1 to 15, plus a −10 and a −20. The total is always between −15 and 84, and on average lands around 37. Each hidden
-          card is worth about 5 on average, so if your card is 12: 12 + 6 × 5 ≈ 42 is a fair first guess.
+          Cards run from 1 to 15, plus a −10 and a −20. The settlement value is always between −15 and 84, and on average lands around 37. Each hidden
+          card is worth about 5 on average, so if your card is 12: 12 + 6 × 5 ≈ 42 is your <strong>fair estimate</strong>.
         </p>
       </>
     ),
@@ -29,22 +29,22 @@ const STEPS: Array<{ title: string; body: React.ReactNode }> = [
     body: (
       <>
         <p>
-          A <strong>contract</strong> is a bet on the total. At the start of each cycle everyone secretly writes down two prices:
+          A <strong>contract</strong> is a bet on the settlement value. At the start of each cycle everyone secretly writes down two prices:
         </p>
         <ul>
           <li>
-            <strong>Bid, “I buy at”</strong>: the most you will pay to buy one contract. Put it a bit <em>below</em> your guess.
+            <strong>Bid, “I buy at”</strong>: the most you will pay to buy one contract. Put it a bit <em>below</em> your fair estimate.
           </li>
           <li>
-            <strong>Ask, “I sell at”</strong>: the least you will accept to sell one contract. Put it a bit <em>above</em> your guess.
+            <strong>Ask, “I sell at”</strong>: the least you will accept to sell one contract. Put it a bit <em>above</em> your fair estimate.
           </li>
         </ul>
         <p>
-          Example: you guess 42, so you post bid 38 / ask 46. If someone sells to you at 38 and the total turns out to be 42, you make 4. If
+          Example: your fair estimate is 42, so you post bid 38 / ask 46. If someone sells to you at 38 and the settlement value turns out to be 42, you make 4. If
           someone buys from you at 46, you make 4 the other way. The gap between your two prices (the <strong>spread</strong>) is your cushion
           for being wrong.
         </p>
-        <p>You can post just one side, or nothing at all. Prices are hidden until everyone has locked in, then shown all at once.</p>
+        <p>You can post just one side, or nothing at all. Prices are hidden until everyone has confirmed, then shown all at once.</p>
       </>
     ),
   },
@@ -55,11 +55,11 @@ const STEPS: Array<{ title: string; body: React.ReactNode }> = [
         <p>Trading goes around the table. On your turn you do exactly one thing:</p>
         <ul>
           <li>
-            <strong>Buy</strong>: take someone's ask. Good when their ask is <em>below</em> your guess.
+            <strong>Buy</strong>: take someone's ask. Good when their ask is <em>below</em> your fair estimate.
           </li>
           <li>
-            <strong>Sell</strong>: take someone's bid. Good when their bid is <em>above</em> your guess. You can sell without owning anything.
-            That is called going <strong>short</strong>; you win if the total comes in low.
+            <strong>Sell</strong>: take someone's bid. Good when their bid is <em>above</em> your fair estimate. You can sell without owning anything.
+            That is called going <strong>short</strong>; you win if the settlement value comes in low.
           </li>
           <li>
             <strong>Counter-offer</strong>: propose a better price. They get ten seconds to accept or decline.
@@ -79,8 +79,8 @@ const STEPS: Array<{ title: string; body: React.ReactNode }> = [
     body: (
       <>
         <p>
-          Each contract pays one credit per point of difference. If you <strong>bought</strong> at 38 and the total is 45, you earn 7. If you{' '}
-          <strong>sold</strong> at 46 and the total is 45, you earn 1. If you bought at 38 and sold at 46 you have locked in 8 no matter what the
+          Each contract pays one credit per point of difference. If you <strong>bought</strong> at 38 and the settlement value is 45, you earn 7. If you{' '}
+          <strong>sold</strong> at 46 and the settlement value is 45, you earn 1. If you bought at 38 and sold at 46 you have 8 of locked profit no matter what the
           cards say.
         </p>
         <p>
@@ -97,8 +97,8 @@ const STEPS: Array<{ title: string; body: React.ReactNode }> = [
     body: (
       <ul>
         <li>Use the suggested prices to start, then widen or tighten them as you get comfortable.</li>
-        <li>A high card (13 to 15) means the total is probably above average: lean towards buying. A −10 or −20 means the opposite: lean towards selling.</li>
-        <li>Watch the face-up community cards; the “Possible value” range and your rough guess update as they appear.</li>
+        <li>A high card (13 to 15) means the settlement value is probably above average: lean towards buying. A −10 or −20 means the opposite: lean towards selling.</li>
+        <li>Watch the face-up community cards; the public range and your fair estimate update as they appear.</li>
         <li>If other traders keep buying, they probably hold high cards. If they keep selling, the opposite.</li>
         <li>Passing is a perfectly good move when nothing looks cheap or expensive.</li>
         <li>Open the “Rules &amp; glossary” panel on the table any time you meet a word you do not know.</li>

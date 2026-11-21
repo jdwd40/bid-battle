@@ -1,4 +1,4 @@
-import { expectedTotal, pairTradesFifo, type PlayerView, type SeatTradeRecord } from '@bid-battle/engine';
+import { fairEstimate, pairTradesFifo, type PlayerView, type SeatTradeRecord } from '@bid-battle/engine';
 import type { ClientView } from '../../../server/src/protocol';
 import { fmt, fmtSigned } from '../format';
 import { Card } from './Card';
@@ -13,9 +13,9 @@ interface Props {
 }
 
 function contextLine(t: SeatTradeRecord): string {
-  const ev = expectedTotal(t.context.ownCard, t.context.publicCards);
+  const ev = fairEstimate(t.context.ownCard, t.context.publicCards);
   const pub = t.context.publicCards.length ? t.context.publicCards.map(fmt).join(', ') : 'none';
-  return `Cycle ${t.cycle}: you held ${fmt(t.context.ownCard)}, public cards ${pub}, possible range ${fmt(t.context.bounds.L)} to ${fmt(t.context.bounds.U)}, fair estimate ≈ ${ev.toFixed(1)}`;
+  return `Cycle ${t.cycle}: you held ${fmt(t.context.ownCard)}, public cards ${pub}, public range ${fmt(t.context.bounds.L)} to ${fmt(t.context.bounds.U)}, fair estimate ≈ ${ev.toFixed(1)}`;
 }
 
 export function RoundReview({ view, game, offset, error, onReady }: Props) {
@@ -134,7 +134,7 @@ export function RoundReview({ view, game, offset, error, onReady }: Props) {
                   })}
                 </tbody>
               </table>
-              <h3 style={{ marginTop: 12 }}>Locked vs exposed (FIFO pairing)</h3>
+              <h3 style={{ marginTop: 12 }}>Locked profit vs exposure (FIFO pairing)</h3>
               <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
                 {breakdown.pairs.map((p, i) => (
                   <li key={i}>
@@ -160,7 +160,7 @@ export function RoundReview({ view, game, offset, error, onReady }: Props) {
                   <li key={t.tradeId}>
                     {t.side === 'BUY' ? 'Buy' : 'Sell'} at {fmt(t.price)} — {contextLine(t)}.{' '}
                     {(() => {
-                      const ev = expectedTotal(t.context.ownCard, t.context.publicCards);
+                      const ev = fairEstimate(t.context.ownCard, t.context.publicCards);
                       const edge = t.side === 'BUY' ? ev - t.price : t.price - ev;
                       return edge >= 0
                         ? `Price was ${edge.toFixed(1)} better than your fair estimate: a sound trade on the information you had, whatever the outcome.`
@@ -191,7 +191,7 @@ export function RoundReview({ view, game, offset, error, onReady }: Props) {
           {meReady ? 'Waiting for others…' : game.round >= game.totalRounds ? 'See final results' : 'Ready for next round'}
         </button>
       </div>
-      <p className="muted small">{view.aiControlled.some((a, i) => a && !game.seats[i].isBot) ? 'Disconnected players are being played by a Normal AI until they return.' : ''}</p>
+      <p className="muted small">{view.botControlled.some((a, i) => a && !game.seats[i].isBot) ? 'Disconnected players are in a takeover: a Normal bot plays their seat until they return.' : ''}</p>
     </div>
   );
 }
