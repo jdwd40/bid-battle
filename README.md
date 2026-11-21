@@ -35,6 +35,20 @@ Other root commands:
 Environment variables (see `.env.example`): `PORT`, `BOT_DELAY_MS`, `QUOTE_PREP_MS`, `TURN_MS`,
 `COUNTER_MS`, `REVIEW_MS`, `ROUNDS`, `STATIC_DIR`, `AUDIT=1` (prints the private audit trail to stderr).
 
+Abuse limits, also from the environment: `ROOMS_PER_IP` (rooms one IP may create per window, default 5),
+`ROOM_WINDOW_MS` (that window, default 600000 = 10 minutes), `MAX_OPEN_ROOMS` (default 100) and
+`MESSAGES_PER_SECOND` (per connection, default 20). `CLIENT_IP_HEADER` names the trusted header that
+carries the client IP; set it to `Fly-Client-IP` in production. Unset, the socket's remote address is
+used, so do not set it when the server is reachable without the proxy (a client could fake the header).
+A refused room creation, or a message over the rate, is answered with an error; the connection stays open.
+
+`ALLOWED_ORIGINS` is a comma-separated list of origins allowed to open a game connection (in
+production, the app's own origin, e.g. `https://bid-battle.fly.dev`). Handshakes from any other
+`Origin` are refused. Unset, only the local dev origins are allowed: the Vite dev server
+(`http://localhost:5173`) and the server's own port, on `localhost` and `127.0.0.1`. To open the dev
+client from another device on your network, add that address (for example
+`ALLOWED_ORIGINS=http://192.168.1.20:5173`).
+
 **Rooms live in memory only. Restarting the server clears every active match.**
 
 ## Playing from a second browser or device
@@ -45,7 +59,8 @@ Environment variables (see `.env.example`): `PORT`, `BOT_DELAY_MS`, `QUOTE_PREP_
    same player.
 3. From another device on the same network, open `http://<your-LAN-IP>:5173/?room=CODE`. Vite binds
    to localhost by default; run `npm run dev -w @bid-battle/web -- --host` (with the server running
-   separately via `npm run dev -w @bid-battle/server`) to expose it. The Socket.IO connection is
+   separately via `ALLOWED_ORIGINS=http://<your-LAN-IP>:5173 npm run dev -w @bid-battle/server`, since
+   the server only accepts local origins by default) to expose it. The Socket.IO connection is
    proxied through Vite, so only the web port needs to be reachable. With `npm run build && npm start`
    a single port (3001) serves both the client and the game server.
 4. The host chooses each empty seat's AI difficulty (Easy / Normal / Hard, default Normal) and

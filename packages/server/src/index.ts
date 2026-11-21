@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createGameServer } from './server.js';
+import { createGameServer, parseAllowedOrigins } from './server.js';
 
 const port = Number(process.env.PORT ?? 3001);
 const botDelayMs = process.env.BOT_DELAY_MS !== undefined ? Number(process.env.BOT_DELAY_MS) : 900;
@@ -15,6 +15,16 @@ for (const [env, key] of [
 }
 const rounds = process.env.ROUNDS !== undefined ? Number(process.env.ROUNDS) : undefined;
 
+// Abuse limits; unset variables keep the defaults in limits.ts.
+const envNumber = (name: string) => (process.env[name] !== undefined ? Number(process.env[name]) : undefined);
+const limits = {
+  roomsPerIp: envNumber('ROOMS_PER_IP'),
+  roomWindowMs: envNumber('ROOM_WINDOW_MS'),
+  maxOpenRooms: envNumber('MAX_OPEN_ROOMS'),
+  messagesPerSecond: envNumber('MESSAGES_PER_SECOND'),
+  clientIpHeader: process.env.CLIENT_IP_HEADER || undefined,
+};
+
 const staticDir = process.env.STATIC_DIR ?? resolve(process.cwd(), 'packages/web/dist');
 
 const server = createGameServer({
@@ -22,6 +32,8 @@ const server = createGameServer({
   config: { ...(rounds ? { rounds } : {}), ...(Object.keys(timers).length ? { timers: timers as any } : {}) },
   staticDir: existsSync(staticDir) ? staticDir : undefined,
   audit: process.env.AUDIT === '1',
+  limits,
+  allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
 });
 
 server.listen(port).then((p) => {

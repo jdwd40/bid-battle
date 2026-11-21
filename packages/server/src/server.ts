@@ -5,6 +5,7 @@ import { secureRng, type MatchConfig, type Rng } from '@bid-battle/engine';
 import { realClock, type Clock } from './clock.js';
 import type { ClientToServerEvents, ServerToClientEvents } from './protocol.js';
 import { Room } from './room.js';
+import { createLimits, LIMIT_ERRORS, type LimitOptions } from './limits.js';
 
 export interface GameServerOptions {
   clock?: Clock;
@@ -17,6 +18,14 @@ export interface GameServerOptions {
   audit?: boolean;
   /** Rooms with no connected humans are removed after this many ms. */
   idleRoomMs?: number;
+  /** Abuse limits (room creation per IP, open-room cap, message rate). Defaults in `DEFAULT_LIMITS`. */
+  limits?: LimitOptions;
+  /**
+   * Origins (scheme://host[:port]) allowed to open a Socket.IO connection. Handshakes carrying any
+   * other `Origin` header are refused. When omitted, only the local dev origins are allowed: the
+   * Vite dev server (port 5173) and this server's own port, on localhost and 127.0.0.1.
+   */
+  allowedOrigins?: string[];
 }
 
 interface SocketData {
@@ -40,14 +49,28 @@ export function createGameServer(opts: GameServerOptions = {}) {
   const rng = opts.rng ?? secureRng();
   const botDelayMs = opts.botDelayMs ?? 900;
   const idleRoomMs = opts.idleRoomMs ?? 10 * 60_000;
+  const limits = createLimits(clock, opts.limits);
   const rooms = new Map<string, Room>();
   const tokenToRoom = new Map<string, string>();
   const sockets = new Map<string, Set<GameSocket>>(); // token -> sockets
 
   const httpServer = createHttpServer((req, res) => serveStatic(req, res, opts.staticDir));
   const io = new SocketServer<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(httpServer, {
-    cors: { origin: true },
+    cors: { origin: (origin, cb) => cb(null, isAllowedOrigin(origin)) },
+    allowRequest: (req, cb) => cb(null, isAllowedOrigin(req.headers.origin)),
   });
+
+  /** Requests without an Origin header come from non-browser clients, which origins can't restrict anyway. */
+  function isAllowedOrigin(origin: string | undefined): boolean {
+    if (!origin) return true;
+    const allowed = opts.allowedOrigins ?? devOrigins(listeningPort());
+    return allowed.includes(origin);
+  }
+
+  function listeningPort(): number | undefined {
+    const addr = httpServer.address();
+    return typeof addr === 'object' && addr ? addr.port : undefined;
+  }
 
   function broadcast(room: Room) {
     for (const p of room.players.values()) {
@@ -101,8 +124,19 @@ export function createGameServer(opts: GameServerOptions = {}) {
   }
 
   io.on('connection', (socket) => {
+    const clientIp = limits.clientIp(socket.handshake);
+    const meter = limits.messageMeter();
+    // Over the rate: drop the message and answer its ack with an error; the connection stays open.
+    socket.use((packet, next) => {
+      if (meter.allow()) return next();
+      const ack = packet[packet.length - 1];
+      if (typeof ack === 'function') ack({ ok: false, error: LIMIT_ERRORS.messageRate });
+    });
+
     socket.on('createRoom', (req, ack) => {
       if (typeof req?.name !== 'string') return ack({ ok: false, error: 'name required' });
+      const refused = limits.claimRoom(clientIp, rooms.size);
+      if (refused) return ack({ ok: false, error: refused });
       const room = createRoom();
       const res = room.addPlayer(req.name);
       if (!res.ok) {
@@ -196,6 +230,17 @@ export function createGameServer(opts: GameServerOptions = {}) {
       await new Promise<void>((resolve) => io.close(() => resolve()));
     },
   };
+}
+
+function devOrigins(ownPort: number | undefined): string[] {
+  const ports = [5173, ...(ownPort ? [ownPort] : [])];
+  return ports.flatMap((p) => [`http://localhost:${p}`, `http://127.0.0.1:${p}`]);
+}
+
+/** Parses a comma-separated origin list (e.g. the ALLOWED_ORIGINS env var); blank means unset. */
+export function parseAllowedOrigins(value: string | undefined): string[] | undefined {
+  const list = (value ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
+  return list.length ? list : undefined;
 }
 
 // ---------------- static files (production) ----------------
