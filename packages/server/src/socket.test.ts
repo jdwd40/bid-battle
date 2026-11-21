@@ -140,4 +140,16 @@ describe('socket transport', () => {
     a.close();
     b2.close();
   });
+
+  it('marks a rejoin to a session that no longer exists with the SESSION_GONE code', async () => {
+    const a = client();
+    const created = await emit<any>(a, 'createRoom', { name: 'Alice' });
+    expect((await emit<any>(a, 'leaveRoom', { token: created.token })).ok).toBe(true);
+
+    const gone = await emit<any>(a, 'rejoin', { token: created.token });
+    expect(gone).toMatchObject({ ok: false, code: 'SESSION_GONE' });
+    expect(gone.error).toMatch(/no longer exists/);
+    expect(await emit<any>(a, 'rejoin', { token: 'bogus' })).toMatchObject({ ok: false, code: 'SESSION_GONE' });
+    a.close();
+  });
 });

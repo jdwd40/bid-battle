@@ -23,7 +23,7 @@ function cmd(room: Room, token: string, action: any, id = `c${Math.random()}`) {
 }
 
 describe('Room lobby', () => {
-  it('seats humans, defaults the rest to Normal bots and lets the host tune difficulty', () => {
+  it('seats players, defaults the rest to Normal bots and lets the host tune difficulty', () => {
     const { room } = makeRoom();
     const a = room.addPlayer('Alice');
     const b = room.addPlayer('Bob');

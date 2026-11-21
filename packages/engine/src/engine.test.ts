@@ -9,7 +9,7 @@ import {
   fairEstimate,
   pairTradesFifo,
   projectView,
-  publicBounds,
+  publicRangeFor,
   remainingDeck,
   seededRng,
   shuffle,
@@ -53,7 +53,7 @@ describe('deck and deal', () => {
   it('mean settlement value is 630/17 and extremes are -15 / 84', () => {
     const mean = remainingDeck([]).reduce((a, b) => a + b, 0) / 17;
     expect(mean * 7).toBeCloseTo(630 / 17, 10);
-    expect(publicBounds([])).toEqual({ L: -15, U: 84 });
+    expect(publicRangeFor([])).toEqual({ L: -15, U: 84 });
   });
 
   it('deals seven unique cards and keeps ten unused', () => {
@@ -73,16 +73,16 @@ describe('deck and deal', () => {
   });
 });
 
-describe('public risk bounds', () => {
+describe('public range', () => {
   it('tightens with public cards using only public info', () => {
-    expect(publicBounds([15])).toEqual({ L: -5, U: 84 });
-    expect(publicBounds([-20, -10])).toEqual({ L: -30 + 15, U: -30 + 15 + 14 + 13 + 12 + 11 });
+    expect(publicRangeFor([15])).toEqual({ L: -5, U: 84 });
+    expect(publicRangeFor([-20, -10])).toEqual({ L: -30 + 15, U: -30 + 15 + 14 + 13 + 12 + 11 });
   });
 
   it('is independent of private cards', () => {
     const a = makeEngine([15, 14, 13, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, -10, -20]);
     const b = makeEngine([-20, -10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-    expect(a.bounds()).toEqual(b.bounds());
+    expect(a.publicRange()).toEqual(b.publicRange());
     const quotes = { 0: { bid: 5, ask: 60 }, 1: {}, 2: {}, 3: {} };
     confirmAll(a, quotes);
     confirmAll(b, quotes);
@@ -90,62 +90,62 @@ describe('public risk bounds', () => {
       ok(a.apply(s, { type: 'PASS' }, 2));
       ok(b.apply(s, { type: 'PASS' }, 2));
     }
-    // After the first reveal, both see the same public card and thus the same bounds.
+    // After the first reveal, both see the same public card and thus the same public range.
     expect(a.publicCards()).toEqual([1]);
     expect(b.publicCards()).toEqual([3]);
-    expect(a.bounds()).toEqual(publicBounds([1]));
-    expect(b.bounds()).toEqual(publicBounds([3]));
+    expect(a.publicRange()).toEqual(publicRangeFor([1]));
+    expect(b.publicRange()).toEqual(publicRangeFor([3]));
   });
 });
 
 describe('risk reservation', () => {
-  const bounds = publicBounds([]);
+  const publicRange = publicRangeFor([]);
   const fresh = { B: 100, q: 0, C: 0 };
 
   it('buying one at 36 risks 51', () => {
-    expect(worstLoss(applyBuy(fresh, 36), bounds)).toBe(51);
-    expect(evaluateQuote(fresh, { bid: 36 }, bounds, 2)).toMatchObject({ ok: true, reserved: 51 });
+    expect(worstLoss(applyBuy(fresh, 36), publicRange)).toBe(51);
+    expect(evaluateQuote(fresh, { bid: 36 }, publicRange, 2)).toMatchObject({ ok: true, reserved: 51 });
   });
 
   it('buying two at 36 risks 102 and is forbidden', () => {
     const two = applyBuy(applyBuy(fresh, 36), 36);
-    expect(worstLoss(two, bounds)).toBe(102);
-    expect(evaluateQuote(applyBuy(fresh, 36), { bid: 36 }, bounds, 2).ok).toBe(false);
+    expect(worstLoss(two, publicRange)).toBe(102);
+    expect(evaluateQuote(applyBuy(fresh, 36), { bid: 36 }, publicRange, 2).ok).toBe(false);
   });
 
   it('buy 32 / sell 36 locks four credits', () => {
     const p = applySell(applyBuy(fresh, 32), 36);
     expect(p.q).toBe(0);
     expect(p.C).toBe(4);
-    expect(worstLoss(p, bounds)).toBe(0);
+    expect(worstLoss(p, publicRange)).toBe(0);
   });
 
   it('enumerates every fill subset and reserves the maximum', () => {
-    const ev = evaluateQuote(fresh, { bid: 30, ask: 40 }, bounds, 2);
+    const ev = evaluateQuote(fresh, { bid: 30, ask: 40 }, publicRange, 2);
     expect(ev.ok).toBe(true);
     expect(ev.reserved).toBe(45); // bid alone: -30 - 15 = -45
     expect(ev.worstSubset).toEqual(['bid']);
-    expect(evaluateQuote({ B: 40, q: 0, C: 0 }, { bid: 30, ask: 40 }, bounds, 2).ok).toBe(false);
-    expect(evaluateQuote({ B: 45, q: 0, C: 0 }, { bid: 30, ask: 40 }, bounds, 2).ok).toBe(true);
+    expect(evaluateQuote({ B: 40, q: 0, C: 0 }, { bid: 30, ask: 40 }, publicRange, 2).ok).toBe(false);
+    expect(evaluateQuote({ B: 45, q: 0, C: 0 }, { bid: 30, ask: 40 }, publicRange, 2).ok).toBe(true);
   });
 
   it('enforces position limits across subsets', () => {
-    expect(evaluateQuote({ B: 100, q: 2, C: -40 }, { bid: 10 }, bounds, 2).ok).toBe(false);
-    expect(evaluateQuote({ B: 100, q: 2, C: -40 }, { ask: 30 }, bounds, 2).ok).toBe(true);
+    expect(evaluateQuote({ B: 100, q: 2, C: -40 }, { bid: 10 }, publicRange, 2).ok).toBe(false);
+    expect(evaluateQuote({ B: 100, q: 2, C: -40 }, { ask: 30 }, publicRange, 2).ok).toBe(true);
   });
 
   it('handles negative prices without free money', () => {
     const sold = applySell(fresh, -5); // short at -5: loses when V is high
-    expect(worstLoss(sold, bounds)).toBe(89);
+    expect(worstLoss(sold, publicRange)).toBe(89);
     const bought = applyBuy(fresh, -10); // long at -10: loses only if V < -10
-    expect(worstLoss(bought, bounds)).toBe(5);
-    expect(evaluateQuote(fresh, { bid: -14, ask: -12 }, bounds, 2).ok).toBe(true);
-    expect(evaluateQuote(fresh, { bid: -16 }, bounds, 2).ok).toBe(true); // affordable but...
+    expect(worstLoss(bought, publicRange)).toBe(5);
+    expect(evaluateQuote(fresh, { bid: -14, ask: -12 }, publicRange, 2).ok).toBe(true);
+    expect(evaluateQuote(fresh, { bid: -16 }, publicRange, 2).ok).toBe(true); // affordable but...
   });
 
   it('a zero-balance player cannot take exposure', () => {
-    expect(evaluateQuote({ B: 0, q: 0, C: 0 }, { bid: 30 }, bounds, 2).ok).toBe(false);
-    expect(evaluateQuote({ B: 0, q: 0, C: 0 }, {}, bounds, 2).ok).toBe(true);
+    expect(evaluateQuote({ B: 0, q: 0, C: 0 }, { bid: 30 }, publicRange, 2).ok).toBe(false);
+    expect(evaluateQuote({ B: 0, q: 0, C: 0 }, {}, publicRange, 2).ok).toBe(true);
   });
 });
 
@@ -490,7 +490,7 @@ describe('views and information hiding', () => {
     ok(e.apply(1, { type: 'SEAL_QUOTE', bid: 30, ask: 40, confirm: true }, 1));
     const obs = buildBotObservation(e.state, 0);
     expect(Object.keys(obs).sort()).toEqual(
-      ['bounds', 'cycle', 'cyclesPerRound', 'myQuote', 'opponents', 'ownCard', 'pendingCounterForMe', 'phase', 'portfolio', 'positionLimit', 'publicCards', 'publishedQuotes', 'round', 'seat', 'tradesThisRound'].sort(),
+      ['publicRange', 'cycle', 'cyclesPerRound', 'myQuote', 'opponents', 'ownCard', 'pendingCounterForMe', 'phase', 'portfolio', 'positionLimit', 'publicCards', 'publishedQuotes', 'round', 'seat', 'tradesThisRound'].sort(),
     );
     expect(obs.ownCard).toBe(10);
     const json = JSON.stringify(obs);

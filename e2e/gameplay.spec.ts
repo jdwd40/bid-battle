@@ -237,3 +237,61 @@ test('a stored seat for a room that no longer exists falls back to the join scre
   await expect(ada.getByTestId('code-input')).toHaveValue(code);
   await expect(ada.getByTestId('room-code')).toHaveCount(0);
 });
+
+/** Socket.IO frames are engine.io message "4" + packet type (2 event, 3 ack) + optional ack id + JSON. */
+const eventFrame = (event: string) => new RegExp(`^42(\\d*)\\["${event}"`);
+
+test('leaving a room forgets its seat even if the server never answers', async ({ browser }) => {
+  const context = await browser.newContext();
+  // Swallow the leaveRoom message so its ack never arrives.
+  await context.routeWebSocket(/\/socket\.io\//, (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((m) => {
+      if (typeof m === 'string' && eventFrame('leaveRoom').test(m)) return;
+      server.send(m);
+    });
+  });
+  const page = await context.newPage();
+  await page.goto('/');
+  await page.getByTestId('name-input').fill('Ada');
+  await page.getByTestId('create-room').click();
+  const code = (await page.getByTestId('room-code').textContent())!.trim();
+
+  await page.getByRole('button', { name: 'Leave table' }).click();
+  await expect(page.getByTestId('name-input')).toBeVisible();
+  await page.goto(`/?room=${code}`);
+  await expect(page.getByTestId('code-input')).toHaveValue(code);
+  await expect(page.getByTestId('room-code')).toHaveCount(0);
+});
+
+test('a reconnect during a rejoin retry leaves only one rejoin chain running', async ({ browser }) => {
+  const ada = await openPlayer(browser, 'Ada');
+  const code = (await ada.getByTestId('room-code').textContent())!.trim();
+  const context = ada.context();
+  // Make Socket.IO's reconnect delay 800 ms (jitter fixed), ahead of the client's first 1000 ms rejoin retry.
+  await context.addInitScript(() => {
+    Math.random = () => 0.4;
+  });
+  let rejoins = 0;
+  await context.routeWebSocket(/\/socket\.io\//, (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((m) => {
+      const rejoin = typeof m === 'string' ? eventFrame('rejoin').exec(m) : null;
+      if (rejoin && ++rejoins === 1) {
+        // First rejoin: answer with a transient failure, then drop the connection so the client
+        // reconnects while its retry timer is still pending.
+        ws.send(`43${rejoin[1]}[{"ok":false,"error":"try again"}]`);
+        ws.close();
+        return;
+      }
+      server.send(m);
+    });
+  });
+
+  const page = await context.newPage();
+  await page.goto(`/?room=${code}`);
+  await expect(page.getByTestId('room-code')).toHaveText(code);
+  // Long enough for every retry a stale chain could still send.
+  await page.waitForTimeout(4_000);
+  expect(rejoins).toBe(2);
+});

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { Command, CommandResult, Difficulty } from '@bid-battle/engine';
 import type { ClientView } from '../../server/src/protocol';
 import { GameClient, type ConnectionStatus } from './socket';
+import { safely } from './safely';
 import { JoinScreen } from './components/JoinScreen';
 import { Lobby } from './components/Lobby';
 import { Table } from './components/Table';
@@ -12,23 +13,17 @@ import { Tutorial } from './components/Tutorial';
 const TUTORIAL_KEY = 'bidbattle.tutorialSeen';
 
 function roomFromLink(): string | null {
-  try {
-    return new URLSearchParams(window.location.search).get('room');
-  } catch {
-    return null;
-  }
+  return safely(() => new URLSearchParams(window.location.search).get('room'), null);
 }
 
 /** Keep the address bar on the invite link while seated, so a reload or reopened link returns to the seat. */
 function setRoomInLink(code: string | null) {
-  try {
+  safely(() => {
     const url = new URL(window.location.href);
     if (code) url.searchParams.set('room', code);
     else url.searchParams.delete('room');
     if (url.href !== window.location.href) window.history.replaceState(null, '', url);
-  } catch {
-    /* ignore */
-  }
+  }, undefined);
 }
 
 export function App() {
@@ -43,13 +38,7 @@ export function App() {
   const [offset, setOffset] = useState(0);
   const [resuming, setResuming] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
-  const [tutorialSeen, setTutorialSeen] = useState(() => {
-    try {
-      return localStorage.getItem(TUTORIAL_KEY) === '1';
-    } catch {
-      return true;
-    }
-  });
+  const [tutorialSeen, setTutorialSeen] = useState(() => safely(() => localStorage.getItem(TUTORIAL_KEY) === '1', true));
 
   // First time a player reaches the table, walk them through the game.
   const atTable = Boolean(view?.game && view.game.phase !== 'MATCH_COMPLETE');
@@ -59,14 +48,15 @@ export function App() {
   const closeTutorial = () => {
     setShowTutorial(false);
     setTutorialSeen(true);
-    try {
-      localStorage.setItem(TUTORIAL_KEY, '1');
-    } catch {
-      /* ignore */
-    }
+    safely(() => localStorage.setItem(TUTORIAL_KEY, '1'), undefined);
   };
 
   useEffect(() => {
+    const showNotice = (reason: string) => {
+      setView(null);
+      setResuming(false);
+      setNotice(reason);
+    };
     const client = new GameClient({
       onView: (v) => {
         setView(v);
@@ -74,11 +64,8 @@ export function App() {
         if (v?.game) setOffset(v.game.serverNow - Date.now());
       },
       onStatus: setStatus,
-      onKicked: (reason) => {
-        setView(null);
-        setResuming(false);
-        setNotice(reason);
-      },
+      onSessionEnded: showNotice,
+      onRejoinFailed: showNotice,
     }, roomFromLink());
     clientRef.current = client;
     setClient(client);

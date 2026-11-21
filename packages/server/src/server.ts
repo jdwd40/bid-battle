@@ -1,11 +1,12 @@
 import { randomBytes } from 'node:crypto';
-import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createHttpServer, type ServerResponse } from 'node:http';
 import { Server as SocketServer, type Socket } from 'socket.io';
 import { secureRng, type MatchConfig, type Rng } from '@bid-battle/engine';
 import { realClock, type Clock } from './clock.js';
 import { SESSION_GONE, type ClientToServerEvents, type ServerToClientEvents } from './protocol.js';
 import { Room } from './room.js';
 import { createLimits, LIMIT_ERRORS, type LimitOptions } from './limits.js';
+import { isAllowedOrigin } from './origins.js';
 
 export interface GameServerOptions {
   clock?: Clock;
@@ -16,7 +17,7 @@ export interface GameServerOptions {
   staticDir?: string;
   /** Verbose private audit log to stderr. */
   audit?: boolean;
-  /** Rooms with no connected humans are removed after this many ms. */
+  /** Rooms with no connected players are removed after this many ms. */
   idleRoomMs?: number;
   /** Abuse limits (room creation per IP, open-room cap, message rate). Defaults in `DEFAULT_LIMITS`. */
   limits?: LimitOptions;
@@ -30,7 +31,8 @@ export interface GameServerOptions {
   allowedOrigins?: string[];
 }
 
-export const SERVER_RESTARTING_NOTICE = 'The server is restarting, so this match has ended. Please create or join a new room in a minute.';
+/** Sent to every client as the shutdown notice, and as the refusal for new rooms and joins while shutting down. */
+export const SERVER_RESTARTING = 'The server is restarting, so every room is closing. Please create or join a new room in a minute.';
 
 interface SocketData {
   token?: string;
@@ -59,8 +61,10 @@ export function createGameServer(opts: GameServerOptions = {}) {
   const sockets = new Map<string, Set<GameSocket>>(); // token -> sockets
 
   const httpServer = createHttpServer((req, res) => {
-    if (req.url === '/status') return serveStatus(res);
-    serveStatic(req, res, opts.staticDir);
+    const path = (req.url ?? '/').split('?')[0];
+    if (path === '/status') return serveStatus(res);
+    if (path === '/health') return serveHealth(res);
+    serveStatic(path, res, opts.staticDir);
   });
 
   /** Deploy check: a deploy ends every room, so only deploy when `activeMatches` is 0. */
@@ -71,15 +75,12 @@ export function createGameServer(opts: GameServerOptions = {}) {
     res.end(JSON.stringify({ activeMatches, openRooms: rooms.size }));
   }
   const io = new SocketServer<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(httpServer, {
-    cors: { origin: (origin, cb) => cb(null, isAllowedOrigin(origin)) },
-    allowRequest: (req, cb) => cb(null, isAllowedOrigin(req.headers.origin)),
+    cors: { origin: (origin, cb) => cb(null, allowOrigin(origin)) },
+    allowRequest: (req, cb) => cb(null, allowOrigin(req.headers.origin)),
   });
 
-  /** Requests without an Origin header come from non-browser clients, which origins can't restrict anyway. */
-  function isAllowedOrigin(origin: string | undefined): boolean {
-    if (!origin) return true;
-    const allowed = opts.allowedOrigins ?? devOrigins(listeningPort());
-    return allowed.includes(origin);
+  function allowOrigin(origin: string | undefined): boolean {
+    return isAllowedOrigin(origin, opts.allowedOrigins, listeningPort());
   }
 
   function listeningPort(): number | undefined {
@@ -116,7 +117,7 @@ export function createGameServer(opts: GameServerOptions = {}) {
   function scheduleIdleSweep() {
     clock.setTimeout(() => {
       for (const [code, room] of rooms) {
-        if (room.hasConnectedHumans()) continue;
+        if (room.hasConnectedPlayers()) continue;
         const lastSeen = Math.max(room.createdAt, ...[...room.players.values()].map((p) => p.disconnectedAt ?? 0));
         if (clock.now() - lastSeen >= idleRoomMs) {
           room.dispose();
@@ -150,7 +151,7 @@ export function createGameServer(opts: GameServerOptions = {}) {
     });
 
     socket.on('createRoom', (req, ack) => {
-      if (shuttingDown) return ack({ ok: false, error: 'the server is restarting; try again in a minute' });
+      if (shuttingDown) return ack({ ok: false, error: SERVER_RESTARTING });
       if (typeof req?.name !== 'string') return ack({ ok: false, error: 'name required' });
       const refused = limits.claimRoom(clientIp, rooms.size);
       if (refused) return ack({ ok: false, error: refused });
@@ -167,6 +168,7 @@ export function createGameServer(opts: GameServerOptions = {}) {
     });
 
     socket.on('joinRoom', (req, ack) => {
+      if (shuttingDown) return ack({ ok: false, error: SERVER_RESTARTING });
       if (typeof req?.name !== 'string' || typeof req?.code !== 'string') return ack({ ok: false, error: 'name and room code required' });
       const room = rooms.get(req.code.trim().toUpperCase());
       if (!room) return ack({ ok: false, error: 'room not found' });
@@ -181,9 +183,9 @@ export function createGameServer(opts: GameServerOptions = {}) {
     socket.on('rejoin', (req, ack) => {
       const code = typeof req?.token === 'string' ? tokenToRoom.get(req.token) : undefined;
       const room = code ? rooms.get(code) : undefined;
-      if (!room) return ack({ ok: false, error: SESSION_GONE });
+      if (!room) return ack({ ...SESSION_GONE });
       const p = room.reconnect(req.token);
-      if (!p) return ack({ ok: false, error: SESSION_GONE });
+      if (!p) return ack({ ...SESSION_GONE });
       attach(socket, room, req.token);
       ack({ ok: true, code: room.code, token: req.token, seat: p.seat });
       broadcast(room);
@@ -248,25 +250,14 @@ export function createGameServer(opts: GameServerOptions = {}) {
       });
     },
     close,
-    /** Graceful stop for a deploy: refuse new rooms, tell every client, then close. */
+    /** Graceful stop for a deploy: refuse new rooms and joins, tell every client, then close. Rejoin keeps working until the close. */
     async shutdown() {
       shuttingDown = true;
-      io.emit('roomClosed', SERVER_RESTARTING_NOTICE);
+      io.emit('roomClosed', SERVER_RESTARTING);
       await new Promise<void>((resolve) => clock.setTimeout(resolve, opts.shutdownGraceMs ?? 1_000));
       await close();
     },
   };
-}
-
-function devOrigins(ownPort: number | undefined): string[] {
-  const ports = [5173, ...(ownPort ? [ownPort] : [])];
-  return ports.flatMap((p) => [`http://localhost:${p}`, `http://127.0.0.1:${p}`]);
-}
-
-/** Parses a comma-separated origin list (e.g. the ALLOWED_ORIGINS env var); blank means unset. */
-export function parseAllowedOrigins(value: string | undefined): string[] | undefined {
-  const list = (value ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
-  return list.length ? list : undefined;
 }
 
 // ---------------- static files (production) ----------------
@@ -285,19 +276,19 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-function serveStatic(req: IncomingMessage, res: ServerResponse, dir?: string) {
-  if (req.url === '/health') {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true }));
-    return;
-  }
+function serveHealth(res: ServerResponse) {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ ok: true }));
+}
+
+/** `path` is the request URL without its query string. */
+function serveStatic(path: string, res: ServerResponse, dir?: string) {
   if (!dir) {
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end('Bid Battle server running. Start the web client with `npm run dev`.');
     return;
   }
-  const url = (req.url ?? '/').split('?')[0];
-  let file = normalize(join(dir, url));
+  let file = normalize(join(dir, path));
   if (!file.startsWith(normalize(dir))) {
     res.writeHead(403).end();
     return;

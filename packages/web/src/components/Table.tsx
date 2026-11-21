@@ -55,7 +55,7 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
             {phaseLabel(game.phase)}
           </span>
           <span className="muted small">
-            Public range {fmt(game.bounds.L)} to {fmt(game.bounds.U)}
+            Public range {fmt(game.publicRange.L)} to {fmt(game.publicRange.U)}
           </span>
         </div>
         <Countdown deadline={game.deadline} offset={offset} totalMs={timerTotal} label={timerLabel} />
@@ -161,7 +161,7 @@ function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView
         </span>
       </div>
       <div className="seat-status">
-        {seat.isBot ? <span className="pill ai">Bot · {difficultyLabel(seat.difficulty)}</span> : <span className="pill human">Player</span>}
+        {seat.isBot ? <span className="pill bot">Bot · {difficultyLabel(seat.difficulty)}</span> : <span className="pill player">Player</span>}
         {takenOver && <span className="pill warn" data-testid={`takeover-${seat.index}`}>Takeover: bot playing until they reconnect</span>}
         <span className="pill">{fmtPosition(seat.position)}</span>
         {game.phase === 'QUOTE_PREPARATION' && <span className="pill">{seat.sealedQuoteConfirmed ? 'Quote confirmed' : 'Preparing…'}</span>}
@@ -214,8 +214,8 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
   if (useBid && bid.trim() !== '' && Number.isFinite(bidNum)) quote.bid = bidNum;
   if (useAsk && ask.trim() !== '' && Number.isFinite(askNum)) quote.ask = askNum;
   const incomplete = (useBid && quote.bid === undefined) || (useAsk && quote.ask === undefined);
-  const priceError = incomplete ? 'enter a whole-number price for each side you are posting' : validateQuotePrices(quote, game.bounds);
-  const ev = priceError ? null : evaluateQuote(local.portfolio, quote, game.bounds, game.positionLimit);
+  const priceError = incomplete ? 'enter a whole-number price for each side you are posting' : validateQuotePrices(quote, game.publicRange);
+  const ev = priceError ? null : evaluateQuote(local.portfolio, quote, game.publicRange, game.positionLimit);
   const problem = priceError ?? (ev && !ev.ok ? `not affordable ${ev.reason}` : null);
   const confirmed = Boolean(sealed?.confirmed);
   const posting = useBid || useAsk;
@@ -228,7 +228,7 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
   };
   const step = (setter: (v: string) => void, current: string, delta: number) => {
     const n = current.trim() === '' ? (estimate !== null ? Math.round(estimate) : 0) : Number(current);
-    setter(String(Math.max(game.bounds.L, Math.min(game.bounds.U, n + delta))));
+    setter(String(Math.max(game.publicRange.L, Math.min(game.publicRange.U, n + delta))));
   };
 
   if (confirmed) {
@@ -308,7 +308,7 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
       </div>
       {posting && problem ? (
         <div className="hint" role="status">
-          Cannot post yet: {problem}. Prices must be whole numbers between {fmt(game.bounds.L)} and {fmt(game.bounds.U)}, with the bid below the ask.
+          Cannot post yet: {problem}. Prices must be whole numbers between {fmt(game.publicRange.L)} and {fmt(game.publicRange.U)}, with the bid below the ask.
         </div>
       ) : posting ? (
         <div className="preview" role="status">
@@ -376,8 +376,9 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
   }, [game.seats, me]);
 
   const isMyTurn = game.phase === 'TRADING' && game.turnSeat === me && !game.pendingCounter;
-  // On a phone the panel is pinned to the bottom of the screen while the player has something to do.
-  const needsMe = isMyTurn || game.pendingCounter?.target === me;
+  // On a phone the panel is pinned to the bottom of the screen only while the player can act on their
+  // turn. A counter-offer awaiting them is answered in the counter-offer modal instead.
+  const pinned = isMyTurn;
   const waitingOn = game.pendingCounter
     ? game.pendingCounter.from === me
       ? `Waiting for ${game.seats[game.pendingCounter.target].name} to answer your counter-offer`
@@ -388,9 +389,9 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
 
   const preview = (side: 'buy' | 'sell', price: number) => {
     const p = side === 'buy' ? applyBuy(local.portfolio, price) : applySell(local.portfolio, price);
-    const check = checkPortfolio(p, game.bounds, game.positionLimit);
-    const afterCancellation = applyRiskCancellation(p, myQuote, game.bounds, game.positionLimit);
-    const ev = evaluateQuote(p, afterCancellation.quote, game.bounds, game.positionLimit);
+    const check = checkPortfolio(p, game.publicRange, game.positionLimit);
+    const afterCancellation = applyRiskCancellation(p, myQuote, game.publicRange, game.positionLimit);
+    const ev = evaluateQuote(p, afterCancellation.quote, game.publicRange, game.positionLimit);
     return { ok: check.ok, reason: check.reason, portfolio: p, reserved: ev.reserved, cancellations: afterCancellation.cancellations };
   };
 
@@ -414,7 +415,7 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
   let counterProblem: string | null = null;
   if (chosen) {
     if (counterPrice.trim() === '' || !Number.isInteger(counterNum)) counterProblem = 'enter a whole-number price';
-    else if (counterNum < game.bounds.L || counterNum > game.bounds.U) counterProblem = `price must be between ${fmt(game.bounds.L)} and ${fmt(game.bounds.U)}`;
+    else if (counterNum < game.publicRange.L || counterNum > game.publicRange.U) counterProblem = `price must be between ${fmt(game.publicRange.L)} and ${fmt(game.publicRange.U)}`;
     else if (chosen.side === 'ask' && counterNum >= chosen.price) counterProblem = `must be strictly below the ask of ${fmt(chosen.price)}`;
     else if (chosen.side === 'bid' && counterNum <= chosen.price) counterProblem = `must be strictly above the bid of ${fmt(chosen.price)}`;
     else {
@@ -424,7 +425,7 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
   }
 
   return (
-    <div className={`panel stack action-panel ${needsMe ? 'pinned' : ''}`} data-testid="action-panel">
+    <div className={`panel stack action-panel ${pinned ? 'pinned' : ''}`} data-testid="action-panel">
       <h2>{isMyTurn ? 'Your move' : 'Prices on the table'}</h2>
       <div className="best-levels">
         <div className="best bid">
@@ -580,11 +581,11 @@ function CounterModal({ game, offset, onCommand }: { game: PlayerView; offset: n
   const from = game.seats[pc.from].name;
   const iSell = pc.side === 'ask';
   const p = iSell ? applySell(local.portfolio, pc.price) : applyBuy(local.portfolio, pc.price);
-  const check = checkPortfolio(p, game.bounds, game.positionLimit);
+  const check = checkPortfolio(p, game.publicRange, game.positionLimit);
   const rest: QuoteSides = { ...game.seats[game.seat!].quote };
   delete rest[pc.side];
-  const afterCancellation = applyRiskCancellation(p, rest, game.bounds, game.positionLimit);
-  const ev = evaluateQuote(p, afterCancellation.quote, game.bounds, game.positionLimit);
+  const afterCancellation = applyRiskCancellation(p, rest, game.publicRange, game.positionLimit);
+  const ev = evaluateQuote(p, afterCancellation.quote, game.publicRange, game.positionLimit);
   const respond = async (accept: boolean) => {
     setBusy(true);
     await onCommand({ type: 'RESPOND_COUNTER', counterId: pc.id, accept });

@@ -67,6 +67,15 @@ describe('status route', () => {
     expect(await status()).toEqual({ activeMatches: 0, openRooms: 1 });
   });
 
+  it('answers /status and /health with a query string', async () => {
+    await start(new FakeClock(), { staticDir: undefined });
+    const statusRes = await fetch(`http://127.0.0.1:${port}/status?probe=1`);
+    expect(statusRes.headers.get('content-type')).toContain('application/json');
+    expect(await statusRes.json()).toEqual({ activeMatches: 0, openRooms: 0 });
+    const healthRes = await fetch(`http://127.0.0.1:${port}/health?probe=1`);
+    expect(await healthRes.json()).toEqual({ ok: true });
+  });
+
   it('stops counting a match once its idle room is swept', async () => {
     const clock = new FakeClock();
     await start(clock, { idleRoomMs: 1_000 });
@@ -83,7 +92,7 @@ describe('status route', () => {
 });
 
 describe('shutdown', () => {
-  it('tells every connected client the server is restarting, refuses new rooms, then closes', async () => {
+  it('tells every connected client the server is restarting, refuses new rooms and joins, then closes', async () => {
     const clock = new FakeClock();
     await start(clock);
     const a = await client();
@@ -99,6 +108,13 @@ describe('shutdown', () => {
     const refused = await emit<any>(b, 'createRoom', { name: 'Bob' });
     expect(refused.ok).toBe(false);
     expect(refused.error).toMatch(/restarting/i);
+
+    const refusedJoin = await emit<any>(b, 'joinRoom', { name: 'Bob', code: created.code });
+    expect(refusedJoin.ok).toBe(false);
+    expect(refusedJoin.error).toMatch(/restarting/i);
+
+    // Rejoin keeps working until the sockets close.
+    expect(await emit<any>(a, 'rejoin', { token: created.token })).toMatchObject({ ok: true, code: created.code });
 
     clock.advance(10_000);
     await shutdown;

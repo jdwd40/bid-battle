@@ -1,5 +1,5 @@
 import type { Difficulty, MatchConfig } from './config.js';
-import type { Bounds, Cancellation, QuoteSides } from './risk.js';
+import type { PublicRange, Cancellation, QuoteSides } from './risk.js';
 
 export type Phase =
   | 'LOBBY'
@@ -22,7 +22,7 @@ export interface SeatSetup {
 export interface TradeContext {
   ownCard: number;
   publicCards: number[];
-  bounds: Bounds;
+  publicRange: PublicRange;
   cycle: number;
 }
 

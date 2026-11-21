@@ -7,7 +7,7 @@ cards are revealed. Fictional credits only.
 
 ## Quick start
 
-Requires Node.js 20+ (developed on Node 26) and npm 10+.
+Requires Node.js 20+ (developed on Node 26; CI and the Docker image both run Node 26) and npm 10+.
 
 ```bash
 npm install          # installs all workspaces
@@ -41,6 +41,8 @@ Abuse limits, also from the environment: `ROOMS_PER_IP` (rooms one IP may create
 carries the client IP; set it to `Fly-Client-IP` in production. Unset, the socket's remote address is
 used, so do not set it when the server is reachable without the proxy (a client could fake the header).
 A refused room creation, or a message over the rate, is answered with an error; the connection stays open.
+The Playwright servers set `ROOMS_PER_IP=1000` because the browser suite creates many rooms from one IP;
+the production default stays 5.
 
 `ALLOWED_ORIGINS` is a comma-separated list of origins allowed to open a game connection (in
 production, the app's own origin, e.g. `https://bid-battle.fly.dev`). Handshakes from any other
@@ -82,7 +84,7 @@ and `CLIENT_IP_HEADER=Fly-Client-IP`. Deploys are manual, once CI passes:
 3. Run `fly deploy` from the repo root.
 
 `GET /status` returns `{ "activeMatches": n, "openRooms": n }`; an active match is one that has
-started and is not complete. On SIGTERM or SIGINT the server refuses new rooms, tells every
+started and is not complete. On SIGTERM or SIGINT the server refuses new rooms and joins (rejoining a seat still works), tells every
 connected player that the server is restarting, waits a second for the notice to arrive, then
 closes.
 
@@ -95,7 +97,7 @@ then open http://localhost:3001 (`curl http://localhost:3001/health` returns `{"
   wins; ties share the win.
 - Each round shuffles a 17-card deck: 1..15, −10, −20. One private card to each trader, three
   face-down community cards, ten unused cards never shown.
-- **Settlement value V = the sum of all seven dealt cards** (four private + three community).
+- **Settlement value = the sum of all seven dealt cards** (four private + three community).
   Range −15 to 84; mean 630/17 ≈ 37.06.
 - Phases: LOBBY → DEAL → QUOTE_PREPARATION → TRADING → (next cycle | SETTLEMENT) → ROUND_REVIEW →
   (next round | MATCH_COMPLETE). Cycle 2 reveals community card 1, cycle 3 reveals card 2,
@@ -111,12 +113,12 @@ then open http://localhost:3001 (`curl http://localhost:3001/health` returns `{"
   side of a quote leaves the other side live. Crossing quotes never auto-match. No self-trades.
   Published quotes cannot be edited or pulled; they disappear only when filled, when the cycle ends,
   or through risk cancellation.
-- Contracts are cash settled: buying at P earns V − P, selling at P earns P − V. Net position stays
+- Contracts are cash settled: buying at P earns the settlement value minus P, selling at P earns P minus the settlement value. Net position stays
   within ±2. Selling first opens a short.
 
 ## Settlement and risk formulas
 
-Per trader within a round: `B` = balance at round start, `q` = bought − sold, `C` = Σ sale prices −
+Per trader within a round: `V` = settlement value, `B` = balance at round start, `q` = bought − sold, `C` = Σ sale prices −
 Σ purchase prices. Trade prices are never deducted up front.
 
 ```
@@ -126,7 +128,7 @@ end balance = B + P&L(V)
 
 The public range uses only the revealed community cards `P`: remove them from the deck, let
 `m = 7 − |P|`, then `L = ΣP + (m smallest remaining)` and `U = ΣP + (m largest remaining)`.
-Before any reveal L = −15 and U = 84. Private cards are never used, so the limits cannot leak them.
+Before any reveal L = −15 and U = 84. Private cards are never used, so the public range cannot leak them.
 
 ```
 worstLoss(portfolio) = max(0, −min(C + q·L, C + q·U))
@@ -139,14 +141,14 @@ re-check each party's remaining quote and deterministically cancel unsafe sides 
 exposure in the direction of the position first), logging each cancellation publicly. An otherwise
 safe trade is never rejected merely because it forces cancellation of the active player's own quote.
 
-Worked checks (all covered by tests): with B = 100 and no public cards, buying one at 36 reserves
-51; two at 36 would reserve 102 and is refused; buying at 32 and selling at 36 is +4 of locked profit whatever V
-is. Reference trade at V = 39: A buys from B at 32 and sells to C at 36 → A +4, B −7, C +3, D 0.
+Worked checks (all covered by tests): with B = 100 and no revealed community cards, buying one at 36 reserves
+51; two at 36 would reserve 102 and is refused; buying at 32 and selling at 36 is +4 of locked profit whatever the
+settlement value is. Reference trade at a settlement value of 39: A buys from B at 32 and sells to C at 36 → A +4, B −7, C +3, D 0.
 Total credits always stay at 400.
 
 The round review pairs a player's buys and sells **FIFO** to separate locked profit from remaining
 exposure; settlement itself always uses the aggregate formula above. The review also shows what
-each trade looked like against the information available at the time (own card, public cards,
+each trade looked like against the information available at the time (own card, revealed community cards,
 public range, fair estimate) rather than judging by outcome.
 
 ## Architecture
@@ -166,6 +168,8 @@ packages/server   Node + Socket.IO
                   de-duplication (command ids) and stale-phase rejection (phaseVersion)
   server.ts       In-memory room registry, socket transport, per-player view broadcast, static files
   clock.ts        Injectable clock (FakeClock for tests)
+  limits.ts       Abuse limits: rooms per IP, open-room cap, message rate
+  origins.ts      Allowed Socket.IO origins (ALLOWED_ORIGINS, or the local dev origins)
   validate.ts     Payload schema checks
 packages/web      React + Vite client (Join → Lobby → Table → Round review → Results)
   coach.ts        Fair estimate, suggested quote and per-phase plain-language tips
@@ -207,7 +211,8 @@ engine commands with the same validation.
   difficulties → start → sealed quotes (opponent's prices hidden until publication) → trade with
   preview → settlement → both clients agree on cards, settlement value and balances → ready for round 2; plus
   reload/reconnect, close-tab-and-reopen-invite-link, per-room token, leave and stale-token tests. The Playwright web server runs the production build with 100 ms bot
-  delays and shortened turn/counter timers.
+  delays, shortened turn/counter timers and `ROOMS_PER_IP=1000` (the suite creates many rooms from one IP;
+  production keeps the default of 5).
 
 ## Design decisions and assumptions
 

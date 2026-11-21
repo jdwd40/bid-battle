@@ -26,15 +26,15 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 /** Shrink a desired quote until it is legal and affordable; may return an empty quote. */
 export function fitQuote(obs: BotObservation, desired: QuoteSides): QuoteSides {
-  const { bounds, portfolio, positionLimit } = obs;
+  const { publicRange, portfolio, positionLimit } = obs;
   const q: QuoteSides = {};
-  if (desired.bid !== undefined) q.bid = clamp(Math.round(desired.bid), bounds.L, bounds.U);
-  if (desired.ask !== undefined) q.ask = clamp(Math.round(desired.ask), bounds.L, bounds.U);
+  if (desired.bid !== undefined) q.bid = clamp(Math.round(desired.bid), publicRange.L, publicRange.U);
+  if (desired.ask !== undefined) q.ask = clamp(Math.round(desired.ask), publicRange.L, publicRange.U);
   if (q.bid !== undefined && q.ask !== undefined && q.bid >= q.ask) {
-    if (q.ask < bounds.U) q.ask = q.bid + 1;
+    if (q.ask < publicRange.U) q.ask = q.bid + 1;
     else q.bid = q.ask - 1;
   }
-  const legal = (x: QuoteSides) => validateQuotePrices(x, bounds) === null && evaluateQuote(portfolio, x, bounds, positionLimit).ok;
+  const legal = (x: QuoteSides) => validateQuotePrices(x, publicRange) === null && evaluateQuote(portfolio, x, publicRange, positionLimit).ok;
   if (legal(q)) return q;
   // Drop the side that adds exposure in the direction we already lean.
   const order: Array<'bid' | 'ask'> = portfolio.q >= 0 ? ['bid', 'ask'] : ['ask', 'bid'];
@@ -62,10 +62,10 @@ function bestLevels(obs: BotObservation): BestLevels {
 }
 
 function canBuy(obs: BotObservation, price: number): boolean {
-  return checkPortfolio(applyBuy(obs.portfolio, price), obs.bounds, obs.positionLimit).ok;
+  return checkPortfolio(applyBuy(obs.portfolio, price), obs.publicRange, obs.positionLimit).ok;
 }
 function canSell(obs: BotObservation, price: number): boolean {
-  return checkPortfolio(applySell(obs.portfolio, price), obs.bounds, obs.positionLimit).ok;
+  return checkPortfolio(applySell(obs.portfolio, price), obs.publicRange, obs.positionLimit).ok;
 }
 
 /** Market signal from public quotes and trades this round (used by Hard). */
@@ -118,11 +118,11 @@ const PROFILES: Record<Difficulty, Profile> = {
   hard: {
     difficulty: 'hard',
     estimate: (obs) => {
-      const ev = fairEstimate(obs.ownCard, obs.publicCards);
+      const estimate = fairEstimate(obs.ownCard, obs.publicCards);
       const signal = marketSignal(obs);
-      if (signal === null) return ev;
+      if (signal === null) return estimate;
       // Cautious inference: lean toward the market but never move more than 5 points.
-      return ev + clamp(0.35 * (signal - ev), -5, 5);
+      return estimate + clamp(0.35 * (signal - estimate), -5, 5);
     },
     halfSpread: (rng) => randomInt(rng, 2, 3),
     skewPerUnit: 2,
@@ -166,13 +166,13 @@ class ProfileBot implements Bot {
       // Counter when a quote is close to fair but not quite there.
       if (bestAsk && bestAsk.price - est <= 5 && bestAsk.price - est > -buyEdge) {
         const price = Math.floor(est - this.p.counterEdge);
-        if (price < bestAsk.price && price >= obs.bounds.L && canBuy(obs, price)) {
+        if (price < bestAsk.price && price >= obs.publicRange.L && canBuy(obs, price)) {
           return { type: 'COUNTER', target: bestAsk.seat, side: 'ask', price };
         }
       }
       if (bestBid && est - bestBid.price <= 5 && est - bestBid.price > -sellEdge) {
         const price = Math.ceil(est + this.p.counterEdge);
-        if (price > bestBid.price && price <= obs.bounds.U && canSell(obs, price)) {
+        if (price > bestBid.price && price <= obs.publicRange.U && canSell(obs, price)) {
           return { type: 'COUNTER', target: bestBid.seat, side: 'bid', price };
         }
       }

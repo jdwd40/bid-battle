@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { safely } from '../safely';
 
 interface Props {
   busy: boolean;
@@ -9,30 +10,14 @@ interface Props {
 }
 
 function initialCode(): string {
-  try {
-    return new URLSearchParams(window.location.search).get('room')?.toUpperCase() ?? '';
-  } catch {
-    return '';
-  }
+  return safely(() => new URLSearchParams(window.location.search).get('room')?.toUpperCase() ?? '', '');
 }
 
 export function JoinScreen({ busy, error, onCreate, onJoin, onHowToPlay }: Props) {
-  const [name, setName] = useState(() => {
-    try {
-      return localStorage.getItem('bidbattle.name') ?? '';
-    } catch {
-      return '';
-    }
-  });
+  const [name, setName] = useState(() => safely(() => localStorage.getItem('bidbattle.name') ?? '', ''));
   const [code, setCode] = useState(initialCode);
 
-  const remember = () => {
-    try {
-      localStorage.setItem('bidbattle.name', name.trim());
-    } catch {
-      /* ignore */
-    }
-  };
+  const remember = () => safely(() => localStorage.setItem('bidbattle.name', name.trim()), undefined);
 
   const create = (e: FormEvent) => {
     e.preventDefault();

@@ -257,11 +257,11 @@ label.field {
   white-space: nowrap;
 }
 
-.pill.ai {
+.pill.bot {
   border-color: rgba(127, 196, 255, 0.5);
 }
 
-.pill.human {
+.pill.player {
   border-color: rgba(243, 201, 105, 0.5);
 }
 
@@ -977,7 +977,7 @@ table.data th.num {
   }
 }
 
-/* Phone: the table is one column (see 900px above). While the player has to act, the action
+/* Phone: the table is one column (see 900px above). While it is the player's turn, the action
    panel sticks to the bottom of the screen, clear of the safe-area inset; otherwise it sits in
    the flow so it never covers the table for long. Controls grow to comfortable tap sizes. */
 @media (max-width: 700px) {
