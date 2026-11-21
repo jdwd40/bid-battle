@@ -57,7 +57,7 @@ export class GameClient {
       }
       const code = this.room;
       this.clearSession();
-      this.listeners.onKicked(`Your seat at table ${code} is no longer available. Join again below.`);
+      this.listeners.onKicked(`Your seat in room ${code} is no longer available. Join again below.`);
     });
   }
 

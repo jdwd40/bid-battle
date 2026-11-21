@@ -161,7 +161,7 @@ function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView
         </span>
       </div>
       <div className="seat-status">
-        {seat.isBot ? <span className="pill ai">Bot · {difficultyLabel(seat.difficulty)}</span> : <span className="pill human">Player</span>}
+        {seat.isBot ? <span className="pill bot">Bot · {difficultyLabel(seat.difficulty)}</span> : <span className="pill player">Player</span>}
         {takenOver && <span className="pill warn" data-testid={`takeover-${seat.index}`}>Takeover: bot playing until they reconnect</span>}
         <span className="pill">{fmtPosition(seat.position)}</span>
         {game.phase === 'QUOTE_PREPARATION' && <span className="pill">{seat.sealedQuoteConfirmed ? 'Quote confirmed' : 'Preparing…'}</span>}

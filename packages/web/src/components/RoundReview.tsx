@@ -13,9 +13,9 @@ interface Props {
 }
 
 function contextLine(t: SeatTradeRecord): string {
-  const ev = fairEstimate(t.context.ownCard, t.context.publicCards);
-  const pub = t.context.publicCards.length ? t.context.publicCards.map(fmt).join(', ') : 'none';
-  return `Cycle ${t.cycle}: you held ${fmt(t.context.ownCard)}, public cards ${pub}, public range ${fmt(t.context.publicRange.L)} to ${fmt(t.context.publicRange.U)}, fair estimate ≈ ${ev.toFixed(1)}`;
+  const estimate = fairEstimate(t.context.ownCard, t.context.publicCards);
+  const revealed = t.context.publicCards.length ? t.context.publicCards.map(fmt).join(', ') : 'none';
+  return `Cycle ${t.cycle}: you held ${fmt(t.context.ownCard)}, community cards ${revealed}, public range ${fmt(t.context.publicRange.L)} to ${fmt(t.context.publicRange.U)}, fair estimate ≈ ${estimate.toFixed(1)}`;
 }
 
 export function RoundReview({ view, game, offset, error, onReady }: Props) {
@@ -160,8 +160,8 @@ export function RoundReview({ view, game, offset, error, onReady }: Props) {
                   <li key={t.tradeId}>
                     {t.side === 'BUY' ? 'Buy' : 'Sell'} at {fmt(t.price)} — {contextLine(t)}.{' '}
                     {(() => {
-                      const ev = fairEstimate(t.context.ownCard, t.context.publicCards);
-                      const edge = t.side === 'BUY' ? ev - t.price : t.price - ev;
+                      const estimate = fairEstimate(t.context.ownCard, t.context.publicCards);
+                      const edge = t.side === 'BUY' ? estimate - t.price : t.price - estimate;
                       return edge >= 0
                         ? `Price was ${edge.toFixed(1)} better than your fair estimate: a sound trade on the information you had, whatever the outcome.`
                         : `Price was ${Math.abs(edge).toFixed(1)} worse than your fair estimate: the outcome does not change that the odds were against it.`;
@@ -182,7 +182,7 @@ export function RoundReview({ view, game, offset, error, onReady }: Props) {
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <div className="seat-status">
           {game.seats.map((s) => (
-            <span key={s.index} className={`pill ${s.ready ? 'human' : ''}`}>
+            <span key={s.index} className={`pill ${s.ready ? 'player' : ''}`}>
               {s.name}: {s.ready ? 'ready' : 'reviewing'}
             </span>
           ))}

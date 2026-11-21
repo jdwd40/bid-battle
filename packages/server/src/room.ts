@@ -162,7 +162,7 @@ export class Room {
     if (!p) return null;
     p.connected = true;
     p.disconnectedAt = null;
-    // Safe boundary: cancel any not-yet-fired bot action for this seat so the human reclaims control.
+    // Safe boundary: cancel any not-yet-fired bot action for this seat so the player reclaims control.
     const t = this.botTimers.get(p.seat);
     if (t !== undefined) {
       this.clock.clearTimeout(t);
@@ -180,7 +180,7 @@ export class Room {
     return !p || !p.connected;
   }
 
-  hasConnectedHumans(): boolean {
+  hasConnectedPlayers(): boolean {
     return [...this.players.values()].some((p) => p.connected);
   }
 

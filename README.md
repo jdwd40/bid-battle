@@ -95,7 +95,7 @@ then open http://localhost:3001 (`curl http://localhost:3001/health` returns `{"
   wins; ties share the win.
 - Each round shuffles a 17-card deck: 1..15, −10, −20. One private card to each trader, three
   face-down community cards, ten unused cards never shown.
-- **Settlement value V = the sum of all seven dealt cards** (four private + three community).
+- **Settlement value = the sum of all seven dealt cards** (four private + three community).
   Range −15 to 84; mean 630/17 ≈ 37.06.
 - Phases: LOBBY → DEAL → QUOTE_PREPARATION → TRADING → (next cycle | SETTLEMENT) → ROUND_REVIEW →
   (next round | MATCH_COMPLETE). Cycle 2 reveals community card 1, cycle 3 reveals card 2,
@@ -111,12 +111,12 @@ then open http://localhost:3001 (`curl http://localhost:3001/health` returns `{"
   side of a quote leaves the other side live. Crossing quotes never auto-match. No self-trades.
   Published quotes cannot be edited or pulled; they disappear only when filled, when the cycle ends,
   or through risk cancellation.
-- Contracts are cash settled: buying at P earns V − P, selling at P earns P − V. Net position stays
+- Contracts are cash settled: buying at P earns the settlement value minus P, selling at P earns P minus the settlement value. Net position stays
   within ±2. Selling first opens a short.
 
 ## Settlement and risk formulas
 
-Per trader within a round: `B` = balance at round start, `q` = bought − sold, `C` = Σ sale prices −
+Per trader within a round: `V` = settlement value, `B` = balance at round start, `q` = bought − sold, `C` = Σ sale prices −
 Σ purchase prices. Trade prices are never deducted up front.
 
 ```
@@ -126,7 +126,7 @@ end balance = B + P&L(V)
 
 The public range uses only the revealed community cards `P`: remove them from the deck, let
 `m = 7 − |P|`, then `L = ΣP + (m smallest remaining)` and `U = ΣP + (m largest remaining)`.
-Before any reveal L = −15 and U = 84. Private cards are never used, so the limits cannot leak them.
+Before any reveal L = −15 and U = 84. Private cards are never used, so the public range cannot leak them.
 
 ```
 worstLoss(portfolio) = max(0, −min(C + q·L, C + q·U))
@@ -139,14 +139,14 @@ re-check each party's remaining quote and deterministically cancel unsafe sides 
 exposure in the direction of the position first), logging each cancellation publicly. An otherwise
 safe trade is never rejected merely because it forces cancellation of the active player's own quote.
 
-Worked checks (all covered by tests): with B = 100 and no public cards, buying one at 36 reserves
-51; two at 36 would reserve 102 and is refused; buying at 32 and selling at 36 is +4 of locked profit whatever V
-is. Reference trade at V = 39: A buys from B at 32 and sells to C at 36 → A +4, B −7, C +3, D 0.
+Worked checks (all covered by tests): with B = 100 and no revealed community cards, buying one at 36 reserves
+51; two at 36 would reserve 102 and is refused; buying at 32 and selling at 36 is +4 of locked profit whatever the
+settlement value is. Reference trade at a settlement value of 39: A buys from B at 32 and sells to C at 36 → A +4, B −7, C +3, D 0.
 Total credits always stay at 400.
 
 The round review pairs a player's buys and sells **FIFO** to separate locked profit from remaining
 exposure; settlement itself always uses the aggregate formula above. The review also shows what
-each trade looked like against the information available at the time (own card, public cards,
+each trade looked like against the information available at the time (own card, revealed community cards,
 public range, fair estimate) rather than judging by outcome.
 
 ## Architecture

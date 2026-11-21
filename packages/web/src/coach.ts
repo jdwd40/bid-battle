@@ -52,7 +52,7 @@ export function coachTip(game: PlayerView): { title: string; body: string } {
     if (pc && pc.target === me) {
       return {
         title: 'Someone wants a better price from you',
-        body: `Accept only if the offered price is still good compared with your fair estimate of ${estimate}. Declining keeps your original price on the board.`,
+        body: `Accept only if the proposed price is still good compared with your fair estimate of ${estimate}. Declining keeps your original price on the board.`,
       };
     }
     if (game.turnSeat === me && !pc) {
@@ -72,7 +72,7 @@ export function coachTip(game: PlayerView): { title: string; body: string } {
         parts.push(
           estimate !== null && bestBid > estimate
             ? `Someone will buy from you at ${fmt(bestBid)}, which is above your fair estimate, so SELLING looks attractive: you profit if the settlement value ends below ${fmt(bestBid)}. You can sell even if you own nothing.`
-            : `The highest buyer offers ${fmt(bestBid)}, which is not above your fair estimate, so selling there is not obviously good.`,
+            : `The highest bid is ${fmt(bestBid)}, which is not above your fair estimate, so selling there is not obviously good.`,
         );
       }
       if (bestAsk === null && bestBid === null) parts.push('Nobody has posted a price you can trade on, so passing is fine.');

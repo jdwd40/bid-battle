@@ -118,11 +118,11 @@ const PROFILES: Record<Difficulty, Profile> = {
   hard: {
     difficulty: 'hard',
     estimate: (obs) => {
-      const ev = fairEstimate(obs.ownCard, obs.publicCards);
+      const estimate = fairEstimate(obs.ownCard, obs.publicCards);
       const signal = marketSignal(obs);
-      if (signal === null) return ev;
+      if (signal === null) return estimate;
       // Cautious inference: lean toward the market but never move more than 5 points.
-      return ev + clamp(0.35 * (signal - ev), -5, 5);
+      return estimate + clamp(0.35 * (signal - estimate), -5, 5);
     },
     halfSpread: (rng) => randomInt(rng, 2, 3),
     skewPerUnit: 2,

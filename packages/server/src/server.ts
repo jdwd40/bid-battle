@@ -16,7 +16,7 @@ export interface GameServerOptions {
   staticDir?: string;
   /** Verbose private audit log to stderr. */
   audit?: boolean;
-  /** Rooms with no connected humans are removed after this many ms. */
+  /** Rooms with no connected players are removed after this many ms. */
   idleRoomMs?: number;
   /** Abuse limits (room creation per IP, open-room cap, message rate). Defaults in `DEFAULT_LIMITS`. */
   limits?: LimitOptions;
@@ -116,7 +116,7 @@ export function createGameServer(opts: GameServerOptions = {}) {
   function scheduleIdleSweep() {
     clock.setTimeout(() => {
       for (const [code, room] of rooms) {
-        if (room.hasConnectedHumans()) continue;
+        if (room.hasConnectedPlayers()) continue;
         const lastSeen = Math.max(room.createdAt, ...[...room.players.values()].map((p) => p.disconnectedAt ?? 0));
         if (clock.now() - lastSeen >= idleRoomMs) {
           room.dispose();
