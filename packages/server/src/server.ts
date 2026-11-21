@@ -6,6 +6,7 @@ import { realClock, type Clock } from './clock.js';
 import { SESSION_GONE, type ClientToServerEvents, type ServerToClientEvents } from './protocol.js';
 import { Room } from './room.js';
 import { createLimits, LIMIT_ERRORS, type LimitOptions } from './limits.js';
+import { isAllowedOrigin } from './origins.js';
 
 export interface GameServerOptions {
   clock?: Clock;
@@ -71,15 +72,12 @@ export function createGameServer(opts: GameServerOptions = {}) {
     res.end(JSON.stringify({ activeMatches, openRooms: rooms.size }));
   }
   const io = new SocketServer<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(httpServer, {
-    cors: { origin: (origin, cb) => cb(null, isAllowedOrigin(origin)) },
-    allowRequest: (req, cb) => cb(null, isAllowedOrigin(req.headers.origin)),
+    cors: { origin: (origin, cb) => cb(null, allowOrigin(origin)) },
+    allowRequest: (req, cb) => cb(null, allowOrigin(req.headers.origin)),
   });
 
-  /** Requests without an Origin header come from non-browser clients, which origins can't restrict anyway. */
-  function isAllowedOrigin(origin: string | undefined): boolean {
-    if (!origin) return true;
-    const allowed = opts.allowedOrigins ?? devOrigins(listeningPort());
-    return allowed.includes(origin);
+  function allowOrigin(origin: string | undefined): boolean {
+    return isAllowedOrigin(origin, opts.allowedOrigins, listeningPort());
   }
 
   function listeningPort(): number | undefined {
@@ -256,17 +254,6 @@ export function createGameServer(opts: GameServerOptions = {}) {
       await close();
     },
   };
-}
-
-function devOrigins(ownPort: number | undefined): string[] {
-  const ports = [5173, ...(ownPort ? [ownPort] : [])];
-  return ports.flatMap((p) => [`http://localhost:${p}`, `http://127.0.0.1:${p}`]);
-}
-
-/** Parses a comma-separated origin list (e.g. the ALLOWED_ORIGINS env var); blank means unset. */
-export function parseAllowedOrigins(value: string | undefined): string[] | undefined {
-  const list = (value ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
-  return list.length ? list : undefined;
 }
 
 // ---------------- static files (production) ----------------

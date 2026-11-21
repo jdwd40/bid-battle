@@ -1,9 +1,13 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createGameServer, parseAllowedOrigins } from './server.js';
+import { parseAllowedOrigins } from './origins.js';
+import { createGameServer } from './server.js';
 
-const port = Number(process.env.PORT ?? 3001);
-const botDelayMs = process.env.BOT_DELAY_MS !== undefined ? Number(process.env.BOT_DELAY_MS) : 900;
+/** A numeric env var, or undefined when unset so the caller's default applies. */
+const envNumber = (name: string) => (process.env[name] !== undefined ? Number(process.env[name]) : undefined);
+
+const port = envNumber('PORT') ?? 3001;
+const botDelayMs = envNumber('BOT_DELAY_MS') ?? 900;
 const timers: Record<string, number> = {};
 for (const [env, key] of [
   ['QUOTE_PREP_MS', 'quotePrepMs'],
@@ -11,12 +15,12 @@ for (const [env, key] of [
   ['COUNTER_MS', 'counterMs'],
   ['REVIEW_MS', 'reviewMs'],
 ] as const) {
-  if (process.env[env] !== undefined) timers[key] = Number(process.env[env]);
+  const ms = envNumber(env);
+  if (ms !== undefined) timers[key] = ms;
 }
-const rounds = process.env.ROUNDS !== undefined ? Number(process.env.ROUNDS) : undefined;
+const rounds = envNumber('ROUNDS');
 
 // Abuse limits; unset variables keep the defaults in limits.ts.
-const envNumber = (name: string) => (process.env[name] !== undefined ? Number(process.env[name]) : undefined);
 const limits = {
   roomsPerIp: envNumber('ROOMS_PER_IP'),
   roomWindowMs: envNumber('ROOM_WINDOW_MS'),
