@@ -1034,6 +1034,16 @@ table.data th.num {
     overflow-y: auto;
     padding: 16px;
   }
+
+  /* Round review tables: five columns fit 390px once the cells and headings are tighter. */
+  table.data th,
+  table.data td {
+    padding: 6px 4px;
+  }
+
+  table.data th {
+    letter-spacing: 0.02em;
+  }
 }
 
 /* ---------- coaching & tutorial ---------- */
