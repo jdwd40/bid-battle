@@ -1,65 +1,86 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  applyBuy,
-  applySell,
-  checkPortfolio,
-  evaluateQuote,
-  applyRiskCancellation,
-  validateQuotePrices,
-  type Command,
-  type CommandResult,
-  type PlayerView,
-  type QuoteSides,
-  type SeatView,
-  type Side,
-} from '@bid-battle/engine';
+import { useEffect, useState } from 'react';
+import { applyBuy, applyRiskCancellation, applySell, checkPortfolio, evaluateQuote, type PlayerView, type QuoteSides, type SeatView } from '@bid-battle/engine';
 import type { ClientView } from '../../../server/src/protocol';
-import { difficultyLabel, fmt, fmtPosition, fmtSigned, phaseLabel } from '../format';
-import { coachTip, fairEstimateLine, myFairEstimate, suggestedQuote } from '../coach';
+import { difficultyLabel, fmt, fmtPosition, phaseLabel, revealLabel, SIDE_TEXT } from '../format';
+import { coachTip, myFairEstimate } from '../coach';
 import { ActivityFeed } from './ActivityFeed';
 import { Card } from './Card';
 import { Countdown } from './Countdown';
 import { HelpPanel } from './HelpPanel';
+import { QuotePanel } from './QuotePanel';
+import { seatStatus } from './seatStatus';
+import { Stats } from './Stats';
+import { TablePhone } from './TablePhone';
+import { ActionButtons, ActionDetail, PreviewBox } from './TradeActions';
+import { useTradeActions, type OnCommand } from './useTradeActions';
+import { usePhoneLayout } from '../usePhoneLayout';
 
 interface Props {
   view: ClientView;
   game: PlayerView;
   offset: number;
   error: string | null;
-  onCommand(cmd: Command): Promise<CommandResult>;
+  onCommand: OnCommand;
 }
 
 const TIMER_TOTALS = { QUOTE_PREPARATION: 20_000, TURN: 20_000, COUNTER: 10_000 };
 
+/** The game table. Phones get their own layout (see TablePhone.tsx); both share the status bar, errors and counter-offer modal. */
 export function Table({ view, game, offset, error, onCommand }: Props) {
   const me = game.seat!;
   const mySeat = game.seats[me];
-  const local = game.me!;
   const prep = game.phase === 'QUOTE_PREPARATION';
   const pending = game.pendingCounter;
 
   const timerLabel = prep ? 'Confirm your quote' : pending ? 'Counter-offer response' : game.turnSeat === me ? 'Your turn' : `${game.seats[game.turnSeat ?? 0]?.name ?? ''}'s turn`;
   const timerTotal = prep ? TIMER_TOTALS.QUOTE_PREPARATION : pending ? TIMER_TOTALS.COUNTER : TIMER_TOTALS.TURN;
+  const estimate = myFairEstimate(game);
+  const phone = usePhoneLayout();
+
+  // On a phone the quote form sits near the top, so each quote preparation (including the first, after
+  // tapping Start further down the lobby) starts scrolled to the top with the whole form in view.
+  const prepKey = prep ? `${game.round}-${game.cycle}` : null;
+  useEffect(() => {
+    if (phone && prepKey !== null) window.scrollTo(0, 0);
+  }, [phone, prepKey]);
+
+  const statusBar = (
+    // On phones this header is the sticky status bar (see styles.css).
+    <div className="table-head" data-testid="status-bar">
+      <div className="meta">
+        <strong>
+          Round {game.round}/{game.totalRounds}
+        </strong>
+        <span>
+          Cycle {game.cycle}/{game.cyclesPerRound}
+        </span>
+        <span className="pill" data-testid="phase">
+          {phaseLabel(game.phase)}
+        </span>
+        <span className="muted small">
+          Public range {fmt(game.publicRange.L)} to {fmt(game.publicRange.U)}
+        </span>
+        {estimate !== null && (
+          <span className="fair-estimate" data-testid="fair-estimate" title="Your fair estimate of the settlement value">
+            Fair estimate <strong>{Math.round(estimate)}</strong>
+          </span>
+        )}
+      </div>
+      <Countdown deadline={game.deadline} offset={offset} totalMs={timerTotal} label={timerLabel} />
+    </div>
+  );
+  const errorBox = error && (
+    <div className="error" role="alert" data-testid="error">
+      {error}
+    </div>
+  );
+  const counterModal = pending && pending.target === me && <CounterModal game={game} offset={offset} onCommand={onCommand} />;
+
+  if (phone) return <TablePhone view={view} game={game} statusBar={statusBar} errorBox={errorBox} counterModal={counterModal} onCommand={onCommand} />;
 
   return (
     <div className="stack">
-      <div className="table-head">
-        <div className="meta">
-          <strong>
-            Round {game.round}/{game.totalRounds}
-          </strong>
-          <span>
-            Cycle {game.cycle}/{game.cyclesPerRound}
-          </span>
-          <span className="pill" data-testid="phase">
-            {phaseLabel(game.phase)}
-          </span>
-          <span className="muted small">
-            Public range {fmt(game.publicRange.L)} to {fmt(game.publicRange.U)}
-          </span>
-        </div>
-        <Countdown deadline={game.deadline} offset={offset} totalMs={timerTotal} label={timerLabel} />
-      </div>
+      {statusBar}
 
       <div className="table-grid">
         <div className="table-main">
@@ -73,7 +94,7 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
             {game.communityCards.map((c, i) => (
               <div className="slot" key={i}>
                 <Card value={c} label={`Community ${i + 1}`} />
-                <span>{c === null ? (i === game.cyclesPerRound - 1 ? 'Settlement' : `Cycle ${i + 2}`) : 'Revealed'}</span>
+                <span>{revealLabel(game, i)}</span>
               </div>
             ))}
           </div>
@@ -84,19 +105,11 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
               <span className="muted small">Your private card</span>
             </div>
             <div className="stat-grid">
-              <Stat label="Balance" value={`${mySeat.balance}`} testId="balance" />
-              <Stat label="Position" value={fmtPosition(local.portfolio.q)} testId="position" />
-              <Stat label="Cashflow" value={fmtSigned(local.portfolio.C)} />
-              <Stat label="Reserved risk" value={`${local.reserved}`} testId="reserved" />
-              <Stat label="Available" value={`${local.available}`} testId="available" />
+              <Stats game={game} keys={['balance', 'position', 'cashflow', 'reserved', 'available']} />
             </div>
           </div>
 
-          {error && (
-            <div className="error" role="alert" data-testid="error">
-              {error}
-            </div>
-          )}
+          {errorBox}
 
           <CoachBox game={game} />
 
@@ -109,7 +122,7 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
         </div>
       </div>
 
-      {pending && pending.target === me && <CounterModal game={game} offset={offset} onCommand={onCommand} />}
+      {counterModal}
     </div>
   );
 }
@@ -131,23 +144,12 @@ function CoachBox({ game }: { game: PlayerView }) {
   );
 }
 
-function Stat({ label, value, testId }: { label: string; value: string; testId?: string }) {
-  return (
-    <div className="stat">
-      <div className="label">{label}</div>
-      <div className="value" data-testid={testId}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
 // ---------------- seats ----------------
 
+const PROGRESS_LABEL = { preparing: 'Preparing…', confirmed: 'Quote confirmed', acted: 'Acted' } as const;
+
 function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView; view: ClientView; isMe: boolean }) {
-  const active = game.phase === 'TRADING' && game.turnSeat === seat.index;
-  const takenOver = view.botControlled[seat.index] && !seat.isBot;
-  const trading = game.phase === 'TRADING';
+  const { active, takenOver, progress } = seatStatus(seat, game, view);
   return (
     <div className={`seat ${active ? 'active' : ''} ${isMe ? 'me' : ''}`} data-testid={`seat-${seat.index}`} aria-current={active ? 'true' : undefined}>
       {active && <span className="turn-tag">Acting</span>}
@@ -164,268 +166,30 @@ function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView
         {seat.isBot ? <span className="pill bot">Bot · {difficultyLabel(seat.difficulty)}</span> : <span className="pill player">Player</span>}
         {takenOver && <span className="pill warn" data-testid={`takeover-${seat.index}`}>Takeover: bot playing until they reconnect</span>}
         <span className="pill">{fmtPosition(seat.position)}</span>
-        {game.phase === 'QUOTE_PREPARATION' && <span className="pill">{seat.sealedQuoteConfirmed ? 'Quote confirmed' : 'Preparing…'}</span>}
-        {trading && seat.hasActedThisCycle && !active && <span className="pill">Acted</span>}
+        {progress && <span className="pill">{PROGRESS_LABEL[progress]}</span>}
       </div>
-      {trading && (
+      {game.phase === 'TRADING' && (
         <div className="quote-line">
-          <div className={`quote-box bid ${seat.quote.bid === undefined ? 'empty' : ''}`}>
-            Bid — buys at
-            <strong data-testid={`bid-${seat.index}`}>{seat.quote.bid === undefined ? '—' : fmt(seat.quote.bid)}</strong>
-          </div>
-          <div className={`quote-box ask ${seat.quote.ask === undefined ? 'empty' : ''}`}>
-            Ask — sells at
-            <strong data-testid={`ask-${seat.index}`}>{seat.quote.ask === undefined ? '—' : fmt(seat.quote.ask)}</strong>
-          </div>
+          {(['bid', 'ask'] as const).map((side) => (
+            <div className={`quote-box ${side} ${seat.quote[side] === undefined ? 'empty' : ''}`} key={side}>
+              {SIDE_TEXT[side].label} — {SIDE_TEXT[side].verb}s at
+              <strong data-testid={`${side}-${seat.index}`}>{seat.quote[side] === undefined ? '—' : fmt(seat.quote[side])}</strong>
+            </div>
+          ))}
         </div>
       )}
-    </div>
-  );
-}
-
-// ---------------- quote preparation ----------------
-
-function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['onCommand'] }) {
-  const local = game.me!;
-  const sealed = local.sealedQuote;
-  const suggestion = suggestedQuote(game);
-  const hasDraft = Boolean(sealed && (sealed.bid !== undefined || sealed.ask !== undefined));
-  const [useBid, setUseBid] = useState(hasDraft ? sealed!.bid !== undefined : true);
-  const [useAsk, setUseAsk] = useState(hasDraft ? sealed!.ask !== undefined : true);
-  const [bid, setBid] = useState<string>(hasDraft && sealed!.bid !== undefined ? String(sealed!.bid) : suggestion ? String(suggestion.bid) : '');
-  const [ask, setAsk] = useState<string>(hasDraft && sealed!.ask !== undefined ? String(sealed!.ask) : suggestion ? String(suggestion.ask) : '');
-  const [busy, setBusy] = useState(false);
-
-  // Reset the form with fresh suggestions when a new cycle begins.
-  const cycleKey = `${game.round}-${game.cycle}`;
-  useEffect(() => {
-    if (!hasDraft) {
-      setUseBid(true);
-      setUseAsk(true);
-      setBid(suggestion ? String(suggestion.bid) : '');
-      setAsk(suggestion ? String(suggestion.ask) : '');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cycleKey]);
-
-  const quote: QuoteSides = {};
-  const bidNum = Number(bid);
-  const askNum = Number(ask);
-  if (useBid && bid.trim() !== '' && Number.isFinite(bidNum)) quote.bid = bidNum;
-  if (useAsk && ask.trim() !== '' && Number.isFinite(askNum)) quote.ask = askNum;
-  const incomplete = (useBid && quote.bid === undefined) || (useAsk && quote.ask === undefined);
-  const priceError = incomplete ? 'enter a whole-number price for each side you are posting' : validateQuotePrices(quote, game.publicRange);
-  const ev = priceError ? null : evaluateQuote(local.portfolio, quote, game.publicRange, game.positionLimit);
-  const problem = priceError ?? (ev && !ev.ok ? `not affordable ${ev.reason}` : null);
-  const confirmed = Boolean(sealed?.confirmed);
-  const posting = useBid || useAsk;
-  const estimate = myFairEstimate(game);
-
-  const confirmQuote = async (skip = false) => {
-    setBusy(true);
-    await onCommand(skip ? { type: 'SEAL_QUOTE', confirm: true } : { type: 'SEAL_QUOTE', ...quote, confirm: true });
-    setBusy(false);
-  };
-  const step = (setter: (v: string) => void, current: string, delta: number) => {
-    const n = current.trim() === '' ? (estimate !== null ? Math.round(estimate) : 0) : Number(current);
-    setter(String(Math.max(game.publicRange.L, Math.min(game.publicRange.U, n + delta))));
-  };
-
-  if (confirmed) {
-    return (
-      <div className="panel stack" data-testid="quote-panel">
-        <h2>Your sealed quote is confirmed</h2>
-        <div className="best-levels">
-          <div className="best bid">
-            <div className="label">Bid — I buy at</div>
-            <div className="price">{sealed?.bid === undefined ? '—' : fmt(sealed.bid)}</div>
-          </div>
-          <div className="best ask">
-            <div className="label">Ask — I sell at</div>
-            <div className="price">{sealed?.ask === undefined ? '—' : fmt(sealed.ask)}</div>
-          </div>
-        </div>
-        <div className="hint">
-          {sealed?.bid === undefined && sealed?.ask === undefined ? 'You are posting no prices this cycle. ' : ''}
-          Reserved risk {local.reserved} · available {local.available}. Everyone's prices are revealed together once all traders have confirmed or the timer ends.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="panel stack" data-testid="quote-panel">
-      <h2>Set your two prices</h2>
-      <div className="hint">
-        <strong>Bid</strong> = the price you would <strong>pay to buy</strong> one contract. <strong>Ask</strong> = the price you would{' '}
-        <strong>sell</strong> one for. Keep your bid below your fair estimate and your ask above it. {estimate !== null && fairEstimateLine(game)}
-      </div>
-      <div className="quote-form">
-        <div className="side bid">
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h4>Bid — I buy at</h4>
-            <button type="button" className={`toggle ${useBid ? 'on' : ''}`} aria-pressed={useBid} onClick={() => setUseBid((v) => !v)} data-testid="use-bid">
-              {useBid ? 'Posting' : 'Not posting'}
-            </button>
-          </div>
-          {useBid ? (
-            <div className="stepper">
-              <button type="button" className="btn btn-sm" onClick={() => step(setBid, bid, -1)} aria-label="Lower bid by one">
-                −1
-              </button>
-              <input className="input input-num" type="number" step={1} value={bid} onChange={(e) => setBid(e.target.value)} aria-label="Bid price" data-testid="bid-input" />
-              <button type="button" className="btn btn-sm" onClick={() => step(setBid, bid, 1)} aria-label="Raise bid by one">
-                +1
-              </button>
-            </div>
-          ) : (
-            <div className="muted small">You will not offer to buy this cycle.</div>
-          )}
-          <div className="muted small">Lower bid = less likely to trade, but more profit if someone sells to you.</div>
-        </div>
-        <div className="side ask">
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h4>Ask — I sell at</h4>
-            <button type="button" className={`toggle ${useAsk ? 'on' : ''}`} aria-pressed={useAsk} onClick={() => setUseAsk((v) => !v)} data-testid="use-ask">
-              {useAsk ? 'Posting' : 'Not posting'}
-            </button>
-          </div>
-          {useAsk ? (
-            <div className="stepper">
-              <button type="button" className="btn btn-sm" onClick={() => step(setAsk, ask, -1)} aria-label="Lower ask by one">
-                −1
-              </button>
-              <input className="input input-num" type="number" step={1} value={ask} onChange={(e) => setAsk(e.target.value)} aria-label="Ask price" data-testid="ask-input" />
-              <button type="button" className="btn btn-sm" onClick={() => step(setAsk, ask, 1)} aria-label="Raise ask by one">
-                +1
-              </button>
-            </div>
-          ) : (
-            <div className="muted small">You will not offer to sell this cycle.</div>
-          )}
-          <div className="muted small">Higher ask = less likely to trade, but more profit if someone buys from you.</div>
-        </div>
-      </div>
-      {posting && problem ? (
-        <div className="hint" role="status">
-          Cannot post yet: {problem}. Prices must be whole numbers between {fmt(game.publicRange.L)} and {fmt(game.publicRange.U)}, with the bid below the ask.
-        </div>
-      ) : posting ? (
-        <div className="preview" role="status">
-          {quote.bid !== undefined && quote.ask !== undefined ? `Your spread is ${quote.ask - quote.bid} points. ` : ''}
-          If your prices get traded against, the most you could lose is <strong>{ev!.reserved}</strong> of your {local.portfolio.B} credits
-          {ev!.worstSubset.length > 0 && <span className="muted"> (worst case: your {ev!.worstSubset.join(' and ')} filled)</span>}.
-        </div>
-      ) : (
-        <div className="hint" role="status">
-          You are not posting any prices. You can still buy or sell against other traders' prices on your turn.
-        </div>
-      )}
-      <div className="row">
-        <button className="btn btn-primary" disabled={busy || (posting && Boolean(problem))} onClick={() => confirmQuote(false)} data-testid="confirm-quote">
-          {posting ? 'Confirm my prices' : 'Confirm: no prices'}
-        </button>
-        {suggestion && (
-          <button
-            className="btn"
-            onClick={() => {
-              setUseBid(true);
-              setUseAsk(true);
-              setBid(String(suggestion.bid));
-              setAsk(String(suggestion.ask));
-            }}
-            data-testid="suggest-quote"
-          >
-            Use suggested ({fmt(suggestion.bid)} / {fmt(suggestion.ask)})
-          </button>
-        )}
-        <button className="btn" disabled={busy} onClick={() => confirmQuote(true)} data-testid="skip-quote">
-          Skip this cycle
-        </button>
-        <span className="muted small">
-          {game.seats.filter((s) => s.sealedQuoteConfirmed).length}/{game.seats.length} traders confirmed
-        </span>
-      </div>
     </div>
   );
 }
 
 // ---------------- trading actions ----------------
 
-type Mode = { kind: 'idle' } | { kind: 'buy'; target: number; price: number } | { kind: 'sell'; target: number; price: number } | { kind: 'counter' };
-
-function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['onCommand'] }) {
-  const me = game.seat!;
-  const local = game.me!;
-  const [mode, setMode] = useState<Mode>({ kind: 'idle' });
-  const [busy, setBusy] = useState(false);
-  const [counterTarget, setCounterTarget] = useState<string>('');
-  const [counterPrice, setCounterPrice] = useState<string>('');
-
-  useEffect(() => {
-    setMode({ kind: 'idle' });
-  }, [game.phaseVersion]);
-
-  const myQuote = game.seats[me].quote;
-  const levels = useMemo(() => {
-    const asks = game.seats.filter((s) => s.index !== me && s.quote.ask !== undefined).map((s) => ({ seat: s.index, price: s.quote.ask! }));
-    const bids = game.seats.filter((s) => s.index !== me && s.quote.bid !== undefined).map((s) => ({ seat: s.index, price: s.quote.bid! }));
-    asks.sort((a, b) => a.price - b.price || a.seat - b.seat);
-    bids.sort((a, b) => b.price - a.price || a.seat - b.seat);
-    return { asks, bids, bestAsk: asks[0] ?? null, bestBid: bids[0] ?? null };
-  }, [game.seats, me]);
-
-  const isMyTurn = game.phase === 'TRADING' && game.turnSeat === me && !game.pendingCounter;
-  // On a phone the panel is pinned to the bottom of the screen only while the player can act on their
-  // turn. A counter-offer awaiting them is answered in the counter-offer modal instead.
-  const pinned = isMyTurn;
-  const waitingOn = game.pendingCounter
-    ? game.pendingCounter.from === me
-      ? `Waiting for ${game.seats[game.pendingCounter.target].name} to answer your counter-offer`
-      : `Waiting for ${game.seats[game.pendingCounter.target].name} to answer a counter-offer`
-    : game.turnSeat !== null && game.turnSeat !== me
-      ? `Waiting for ${game.seats[game.turnSeat].name} to act`
-      : null;
-
-  const preview = (side: 'buy' | 'sell', price: number) => {
-    const p = side === 'buy' ? applyBuy(local.portfolio, price) : applySell(local.portfolio, price);
-    const check = checkPortfolio(p, game.publicRange, game.positionLimit);
-    const afterCancellation = applyRiskCancellation(p, myQuote, game.publicRange, game.positionLimit);
-    const ev = evaluateQuote(p, afterCancellation.quote, game.publicRange, game.positionLimit);
-    return { ok: check.ok, reason: check.reason, portfolio: p, reserved: ev.reserved, cancellations: afterCancellation.cancellations };
-  };
-
-  const buyReason = !isMyTurn ? waitingOn ?? 'Not your turn' : !levels.bestAsk ? 'No one is offering to sell right now' : preview('buy', levels.bestAsk.price).ok ? null : `You cannot buy: ${preview('buy', levels.bestAsk.price).reason}`;
-  const sellReason = !isMyTurn ? waitingOn ?? 'Not your turn' : !levels.bestBid ? 'No one is offering to buy right now' : preview('sell', levels.bestBid.price).ok ? null : `You cannot sell: ${preview('sell', levels.bestBid.price).reason}`;
-  const counterReason = !isMyTurn ? waitingOn ?? 'Not your turn' : levels.asks.length + levels.bids.length === 0 ? 'No quotes to counter' : null;
-
-  const run = async (cmd: Command) => {
-    setBusy(true);
-    const res = await onCommand(cmd);
-    setBusy(false);
-    if (res.ok) setMode({ kind: 'idle' });
-  };
-
-  const counterOptions = [
-    ...levels.asks.map((a) => ({ key: `ask:${a.seat}`, side: 'ask' as Side, seat: a.seat, price: a.price, label: `Buy below ${game.seats[a.seat].name}'s ask ${fmt(a.price)}` })),
-    ...levels.bids.map((b) => ({ key: `bid:${b.seat}`, side: 'bid' as Side, seat: b.seat, price: b.price, label: `Sell above ${game.seats[b.seat].name}'s bid ${fmt(b.price)}` })),
-  ];
-  const chosen = counterOptions.find((o) => o.key === counterTarget) ?? counterOptions[0] ?? null;
-  const counterNum = Number(counterPrice);
-  let counterProblem: string | null = null;
-  if (chosen) {
-    if (counterPrice.trim() === '' || !Number.isInteger(counterNum)) counterProblem = 'enter a whole-number price';
-    else if (counterNum < game.publicRange.L || counterNum > game.publicRange.U) counterProblem = `price must be between ${fmt(game.publicRange.L)} and ${fmt(game.publicRange.U)}`;
-    else if (chosen.side === 'ask' && counterNum >= chosen.price) counterProblem = `must be strictly below the ask of ${fmt(chosen.price)}`;
-    else if (chosen.side === 'bid' && counterNum <= chosen.price) counterProblem = `must be strictly above the bid of ${fmt(chosen.price)}`;
-    else {
-      const pv = preview(chosen.side === 'ask' ? 'buy' : 'sell', counterNum);
-      if (!pv.ok) counterProblem = pv.reason ?? 'risk limit';
-    }
-  }
+function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: OnCommand }) {
+  const a = useTradeActions(game, onCommand);
+  const { mode, levels, isMyTurn, waitingOn, buyReason, sellReason } = a;
 
   return (
-    <div className={`panel stack action-panel ${pinned ? 'pinned' : ''}`} data-testid="action-panel">
+    <div className="panel stack action-panel" data-testid="action-panel">
       <h2>{isMyTurn ? 'Your move' : 'Prices on the table'}</h2>
       <div className="best-levels">
         <div className="best bid">
@@ -447,30 +211,7 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
       {mode.kind === 'idle' && (
         <>
           <div className="actions">
-            <button
-              className="btn btn-buy"
-              disabled={busy || Boolean(buyReason)}
-              title={buyReason ?? undefined}
-              onClick={() => levels.bestAsk && setMode({ kind: 'buy', target: levels.bestAsk.seat, price: levels.bestAsk.price })}
-              data-testid="buy"
-            >
-              Buy {levels.bestAsk ? `at ${fmt(levels.bestAsk.price)}` : ''}
-            </button>
-            <button
-              className="btn btn-sell"
-              disabled={busy || Boolean(sellReason)}
-              title={sellReason ?? undefined}
-              onClick={() => levels.bestBid && setMode({ kind: 'sell', target: levels.bestBid.seat, price: levels.bestBid.price })}
-              data-testid="sell"
-            >
-              Sell {levels.bestBid ? `at ${fmt(levels.bestBid.price)}` : ''}
-            </button>
-            <button className="btn" disabled={busy || Boolean(counterReason)} title={counterReason ?? undefined} onClick={() => setMode({ kind: 'counter' })} data-testid="counter">
-              Counter-offer
-            </button>
-            <button className="btn" disabled={busy || !isMyTurn} title={!isMyTurn ? waitingOn ?? 'Not your turn' : undefined} onClick={() => run({ type: 'PASS' })} data-testid="pass">
-              Pass
-            </button>
+            <ActionButtons actions={a} />
           </div>
           <div className="hint" data-testid="action-hint">
             {isMyTurn
@@ -482,99 +223,14 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
         </>
       )}
 
-      {(mode.kind === 'buy' || mode.kind === 'sell') && (
-        <TradeConfirm
-          kind={mode.kind}
-          target={game.seats[mode.target].name}
-          price={mode.price}
-          preview={preview(mode.kind, mode.price)}
-          busy={busy}
-          onCancel={() => setMode({ kind: 'idle' })}
-          onConfirm={() => run(mode.kind === 'buy' ? { type: 'BUY', target: mode.target, price: mode.price } : { type: 'SELL', target: mode.target, price: mode.price })}
-        />
-      )}
-
-      {mode.kind === 'counter' && chosen && (
-        <div className="stack">
-          <label className="field">
-            Counter against
-            <select className="input" value={chosen.key} onChange={(e) => setCounterTarget(e.target.value)} data-testid="counter-target">
-              {counterOptions.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            Your price ({chosen.side === 'ask' ? 'you would buy' : 'you would sell'} one contract)
-            <input className="input input-num" type="number" step={1} value={counterPrice} onChange={(e) => setCounterPrice(e.target.value)} data-testid="counter-price" />
-          </label>
-          {counterProblem ? (
-            <div className="hint">Cannot send: {counterProblem}.</div>
-          ) : (
-            <PreviewBox label={`If ${game.seats[chosen.seat].name} accepts`} preview={preview(chosen.side === 'ask' ? 'buy' : 'sell', counterNum)} />
-          )}
-          <div className="row">
-            <button className="btn btn-primary" disabled={busy || Boolean(counterProblem)} onClick={() => run({ type: 'COUNTER', target: chosen.seat, side: chosen.side, price: counterNum })} data-testid="send-counter">
-              Send counter-offer
-            </button>
-            <button className="btn" onClick={() => setMode({ kind: 'idle' })}>
-              Back
-            </button>
-          </div>
-          <div className="muted small">They have 10 seconds to accept or decline. Either way this uses your action for the cycle.</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-type Preview = ReturnType<typeof previewShape>;
-function previewShape() {
-  return { ok: true as boolean, reason: undefined as string | undefined, portfolio: { B: 0, q: 0, C: 0 }, reserved: 0, cancellations: [] as Array<{ side: Side; price: number; reason: string }> };
-}
-
-function PreviewBox({ label, preview }: { label: string; preview: Preview }) {
-  return (
-    <div className="preview" data-testid="trade-preview">
-      <strong>{label}:</strong> position {fmtPosition(preview.portfolio.q)} · cashflow {fmtSigned(preview.portfolio.C)} · reserved risk {preview.reserved} · available{' '}
-      {preview.portfolio.B - preview.reserved}
-      {preview.cancellations.length > 0 && (
-        <ul>
-          {preview.cancellations.map((c, i) => (
-            <li key={i}>
-              Your {c.side} at {fmt(c.price)} would be removed by risk cancellation ({c.reason}).
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function TradeConfirm({ kind, target, price, preview, busy, onCancel, onConfirm }: { kind: 'buy' | 'sell'; target: string; price: number; preview: Preview; busy: boolean; onCancel(): void; onConfirm(): void }) {
-  return (
-    <div className="stack" data-testid="trade-confirm">
-      <div>
-        {kind === 'buy' ? 'Buy one contract from' : 'Sell one contract to'} <strong>{target}</strong> at <strong>{fmt(price)}</strong>.
-      </div>
-      <PreviewBox label="After this trade" preview={preview} />
-      <div className="row">
-        <button className={`btn ${kind === 'buy' ? 'btn-buy' : 'btn-sell'}`} disabled={busy || !preview.ok} onClick={onConfirm} data-testid="confirm-trade">
-          Confirm {kind}
-        </button>
-        <button className="btn" onClick={onCancel}>
-          Back
-        </button>
-      </div>
+      <ActionDetail game={game} actions={a} cancelLabel="Back" />
     </div>
   );
 }
 
 // ---------------- counter response ----------------
 
-function CounterModal({ game, offset, onCommand }: { game: PlayerView; offset: number; onCommand: Props['onCommand'] }) {
+function CounterModal({ game, offset, onCommand }: { game: PlayerView; offset: number; onCommand: OnCommand }) {
   const pc = game.pendingCounter!;
   const local = game.me!;
   const [busy, setBusy] = useState(false);

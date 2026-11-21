@@ -1,5 +1,5 @@
 import type { GameEvent, LoggedEvent, Phase } from '@bid-battle/engine';
-import type { SeatView } from '@bid-battle/engine';
+import type { PlayerView, SeatView } from '@bid-battle/engine';
 
 /** Format a number using a true minus sign so negatives are unmistakable. */
 export function fmt(n: number): string {
@@ -87,3 +87,14 @@ export function describeEvent(e: LoggedEvent, seats: SeatView[]): string | null 
 export function difficultyLabel(d: string): string {
   return d.charAt(0).toUpperCase() + d.slice(1);
 }
+
+/** Under a community card: when it will be revealed, or that it has been. */
+export function revealLabel(game: Pick<PlayerView, 'communityCards' | 'cyclesPerRound'>, i: number): string {
+  return game.communityCards[i] === null ? (i === game.cyclesPerRound - 1 ? 'Settlement' : `Cycle ${i + 2}`) : 'Revealed';
+}
+
+/** How each side of a quote reads in the interface: a bid buys, an ask sells. */
+export const SIDE_TEXT = {
+  bid: { label: 'Bid', withArticle: 'a bid', verb: 'buy', verbing: 'buying' },
+  ask: { label: 'Ask', withArticle: 'an ask', verb: 'sell', verbing: 'selling' },
+} as const;

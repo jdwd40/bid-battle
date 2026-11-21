@@ -1,5 +1,5 @@
-import { fairEstimate, type PlayerView } from '@bid-battle/engine';
-import { fmt } from './format';
+import { evaluateQuote, fairEstimate, validateQuotePrices, type PlayerView, type QuoteSides, type Side } from '@bid-battle/engine';
+import { fmt, SIDE_TEXT } from './format';
 
 /** The local trader's fair estimate: own card + average of the unknown dealt cards. */
 export function myFairEstimate(game: PlayerView): number | null {
@@ -17,12 +17,49 @@ export function fairEstimateLine(game: PlayerView): string {
   return `Your card is ${fmt(card)}${known}. The other ${unknown} hidden cards average about ${((g - card - game.publicCards.reduce((a, b) => a + b, 0)) / unknown).toFixed(1)} each, so your fair estimate of the settlement value is ${Math.round(g)}.`;
 }
 
-/** Suggested starter quote: a little below and above the fair estimate. */
-export function suggestedQuote(game: PlayerView): { bid: number; ask: number } | null {
+/**
+ * A suggested quote the trader can afford: both sides, one side, or none (post no prices). `reason` says why
+ * a side was left off; it is absent when both sides are suggested.
+ */
+export interface SuggestedQuote {
+  quote: QuoteSides;
+  reason?: string;
+}
+
+/**
+ * Suggested quote: a little below and above the fair estimate, checked with the engine's affordability
+ * evaluation (the same one that enables Confirm). A side that is not affordable moves away from the estimate,
+ * which lowers its worst-case loss, but stays strictly inside the public range, where it could still profit.
+ * If each side fits alone but the pair does not, both move further out together before a side is dropped.
+ * If only one side fits it is suggested alone, and if neither fits no prices are suggested; either way
+ * `reason` says why. Null when the trader has no fair estimate (no private card yet).
+ */
+export function suggestedQuote(game: PlayerView): SuggestedQuote | null {
   const g = myFairEstimate(game);
-  if (g === null) return null;
+  const portfolio = game.me?.portfolio;
+  if (g === null || !portfolio) return null;
+  const { L, U } = game.publicRange;
+  const fits = (q: QuoteSides) =>
+    validateQuotePrices(q, game.publicRange) === null && evaluateQuote(portfolio, q, game.publicRange, game.positionLimit).ok;
   const mid = Math.round(g);
-  return { bid: Math.max(game.publicRange.L, mid - 4), ask: Math.min(game.publicRange.U, mid + 4) };
+  let bid: number | undefined;
+  for (let b = Math.min(U - 1, mid - 4); b > L && bid === undefined; b--) if (fits({ bid: b })) bid = b;
+  let ask: number | undefined;
+  for (let a = Math.max(L + 1, mid + 4); a < U && ask === undefined; a++) if (fits({ ask: a })) ask = a;
+  if (bid !== undefined && ask !== undefined) {
+    for (let b = bid, a = ask; b > L && a < U; b--, a++) if (fits({ bid: b, ask: a })) return { quote: { bid: b, ask: a } };
+    // Neither side can move further out with the pair still unaffordable: keep the side nearer the estimate.
+    const keep: Side = mid - bid <= ask - mid ? 'bid' : 'ask';
+    const drop: Side = keep === 'bid' ? 'ask' : 'bid';
+    return { quote: { [keep]: keep === 'bid' ? bid : ask }, reason: `No ${drop}: your available credits cannot cover the risk of both a bid and an ask this cycle.` };
+  }
+  const leftOff = (side: Side) =>
+    Math.abs(portfolio.q + (side === 'bid' ? 1 : -1)) > game.positionLimit
+      ? `${SIDE_TEXT[side].withArticle} would take your position past the position limit of ±${game.positionLimit}.`
+      : `your available credits cannot cover the risk of ${SIDE_TEXT[side].withArticle} this cycle.`;
+  if (bid !== undefined) return { quote: { bid }, reason: `No ask: ${leftOff('ask')}` };
+  if (ask !== undefined) return { quote: { ask }, reason: `No bid: ${leftOff('bid')}` };
+  return { quote: {}, reason: 'No prices: your available credits cannot cover the risk of a bid or an ask this cycle.' };
 }
 
 /** Plain-language advice for the current moment at the table. */

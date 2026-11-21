@@ -464,6 +464,11 @@ label.field {
   font-size: 1.1rem;
 }
 
+/* The fair estimate is shown in the phone status bar only; desktop keeps it in the coach text. */
+.table-head .fair-estimate {
+  display: none;
+}
+
 .countdown {
   min-width: 120px;
   text-align: right;
@@ -977,46 +982,71 @@ table.data th.num {
   }
 }
 
-/* Phone: the table is one column (see 900px above). While it is the player's turn, the action
-   panel sticks to the bottom of the screen, clear of the safe-area inset; otherwise it sits in
-   the flow so it never covers the table for long. Controls grow to comfortable tap sizes. */
+/* Phone: the table is one column (see 900px above), with a sticky status bar. Controls grow to
+   comfortable tap sizes. The phone action bar and sheet are in the phone table section below. */
 @media (max-width: 700px) {
-  .action-panel.pinned {
+  /* The table header becomes a slim status bar that stays at the top while the table scrolls. */
+  .table-head {
     position: sticky;
-    bottom: 0;
+    top: 0;
     z-index: 20;
-    background: var(--panel-solid);
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
-    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    grid-template-columns: 1fr auto;
     gap: 8px;
+    align-items: center;
+    margin: -10px -10px 8px;
+    padding: calc(4px + env(safe-area-inset-top, 0px)) 10px 4px;
+    background: var(--panel-solid);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
   }
 
-  .action-panel .best-levels {
-    grid-template-columns: 1fr 1fr;
+  .table-head .meta {
+    gap: 2px 10px;
+    font-size: 0.8rem;
+    line-height: 1.25;
   }
 
-  .action-panel .best {
-    padding: 6px 8px;
+  .table-head .meta strong {
+    font-size: 0.85rem;
   }
 
-  .action-panel .best .price {
-    font-size: 1.3rem;
+  .table-head .meta .pill {
+    padding: 0 6px;
   }
 
-  .action-panel.pinned h2 {
-    margin-bottom: 0;
+  .table-head .fair-estimate {
+    display: inline;
+    color: var(--accent);
   }
 
-  .action-panel.pinned .best .muted {
+  .table-head .fair-estimate strong {
+    color: inherit;
+  }
+
+  .table-head .countdown {
+    min-width: 0;
+    text-align: right;
+  }
+
+  .table-head .countdown .muted {
     display: none;
+  }
+
+  .table-head .countdown .time {
+    font-size: 1.2rem;
+    line-height: 1.2;
+  }
+
+  .table-head .countdown .bar {
+    width: 56px;
+    margin-left: auto;
   }
 
   .actions {
     grid-template-columns: 1fr 1fr;
   }
 
+  /* Toggles only appear in the compact quote form on phones, which sizes them (.quote-compact .toggle). */
   .btn-sm,
-  .toggle,
   .input {
     min-height: 44px;
   }
@@ -1044,6 +1074,422 @@ table.data th.num {
   table.data th {
     letter-spacing: 0.02em;
   }
+}
+
+/* ---------- phone table layout (rendered only below the phone breakpoint, see usePhoneLayout) ---------- */
+
+.table-phone {
+  gap: 8px;
+}
+
+.card.xs {
+  width: 34px;
+  height: 46px;
+  font-size: 1rem;
+  border-radius: 6px;
+}
+
+.card.xs .corner {
+  display: none;
+}
+
+/* Too small for the word; the red face still marks a negative card. */
+.card.xs.negative::after {
+  content: none;
+}
+
+.card.xs.hidden::before {
+  font-size: 1.1rem;
+}
+
+/* The private card and the community cards in one short row. */
+.card-strip {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--line);
+}
+
+.card-strip .slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.62rem;
+  line-height: 1.2;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.card-strip .slot.mine {
+  color: var(--accent);
+  font-weight: 800;
+  padding-right: 12px;
+  border-right: 1px solid var(--line);
+}
+
+/* The compact quote form: Bid and Ask side by side, then messages, Confirm, and Suggest/Skip. */
+.quote-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
+.quote-compact .quote-form {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.quote-compact .quote-form .side {
+  padding: 4px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.quote-compact .toggle {
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quote-compact .side.bid .toggle.on {
+  background: var(--buy);
+}
+
+.quote-compact .side.ask .toggle.on {
+  background: var(--sell);
+}
+
+.quote-compact .stepper {
+  gap: 4px;
+}
+
+.quote-compact .stepper .btn-sm {
+  flex: none;
+  width: 36px;
+  min-height: 44px;
+  padding: 0;
+}
+
+.quote-compact .stepper .input-num {
+  min-width: 0;
+  width: 100%;
+  padding: 4px;
+  font-size: 16px; /* stops iOS zooming into the field on focus */
+}
+
+.quote-compact .side-off {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Landscape phones are short: each side's toggle sits beside its price, so Confirm stays on the first screen. */
+@media (max-height: 500px) {
+  .quote-compact .quote-form .side {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .quote-compact .toggle {
+    width: auto;
+    flex: 0 1 auto;
+  }
+
+  .quote-compact .stepper,
+  .quote-compact .side-off {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.quote-compact .error,
+.quote-compact .hint {
+  padding: 6px 10px;
+}
+
+.quote-compact .quote-status {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quote-compact > .btn,
+.quote-extras .btn {
+  min-height: 44px;
+}
+
+.quote-compact > .btn-block {
+  width: 100%;
+}
+
+.quote-extras {
+  display: flex;
+  gap: 8px;
+}
+
+.quote-extras .btn {
+  flex: 1;
+  padding: 6px 8px;
+}
+
+/* Trader rows: one compact line per trader, in place of the seat tiles. */
+.trader-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trader-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px 40px 56px 52px;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.trader-row.me {
+  background: rgba(243, 201, 105, 0.08);
+}
+
+.trader-row.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(243, 201, 105, 0.35);
+}
+
+.trader-row .tr-who {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trader-row .tr-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trader-row .tr-badges {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.trader-row .pill {
+  padding: 0 5px;
+  font-size: 0.66rem;
+  gap: 2px;
+}
+
+.trader-row .pill.you {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 800;
+}
+
+.trader-row .pill.turn {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.trader-row .tr-status {
+  font-size: 0.66rem;
+  color: var(--ink-muted);
+}
+
+.trader-row .tr-price,
+.trader-row .tr-num {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.trader-row .tr-label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+}
+
+.trader-row .tr-price strong {
+  font-size: 1rem;
+}
+
+.trader-row .tr-price.bid strong {
+  color: var(--buy);
+}
+
+.trader-row .tr-price.ask strong {
+  color: var(--sell);
+}
+
+.trader-row .tr-price.empty strong {
+  color: var(--ink-muted);
+}
+
+.trader-row .tr-num {
+  color: var(--ink-dim);
+}
+
+.trader-row .tr-quote-hidden {
+  grid-column: span 2;
+  text-align: center;
+  font-size: 0.66rem;
+}
+
+/* My stats: Available and Position, with the rest behind Details. */
+.phone-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.phone-stats-main,
+.phone-stats-more {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.phone-stats-more {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.phone-stats .stat {
+  padding: 4px 8px;
+}
+
+.phone-stats .stat .value {
+  font-size: 1rem;
+}
+
+/* The action bar: one row of Buy, Sell, Counter-offer and Pass. On the player's turn it sticks to the
+   bottom of the screen, clear of the safe-area inset; otherwise it sits in the flow, so nothing is pinned. */
+.action-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.action-bar.pinned {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin: 0 -10px -10px;
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel-solid);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.action-bar-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.action-bar-buttons .btn {
+  padding: 4px;
+  font-size: 0.85rem;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.action-bar-buttons .action-price {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.action-bar .error {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+/* The bottom sheet for the chosen action: the trade confirmation or the counter-offer form. */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.sheet {
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel-solid);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--shadow);
+}
+
+/* Coach, activity and help: collapsible sections below the play area, opened by tapping the title line. */
+.phone-section > summary,
+.table-phone details.help > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  list-style: none;
+}
+
+.phone-section > summary::-webkit-details-marker,
+.table-phone details.help > summary::-webkit-details-marker {
+  display: none;
+}
+
+.phone-section > summary::before,
+.table-phone details.help > summary::before {
+  content: '▸';
+  flex: none;
+  color: var(--ink-muted);
+}
+
+.phone-section[open] > summary::before,
+.table-phone details.help[open] > summary::before {
+  content: '▾';
+}
+
+.table-phone .coach.phone-section {
+  padding-block: 0;
+}
+
+.table-phone .coach.phone-section p {
+  margin: 0 0 10px;
+}
+
+.phone-section .feed {
+  margin-top: 4px;
 }
 
 /* ---------- coaching & tutorial ---------- */
@@ -1090,14 +1536,25 @@ table.data th.num {
   min-width: 80px;
 }
 
-.tutorial {
+/* The header and the Back/Next/Done row stay put; only the step's content scrolls, so the buttons are in view at any height. */
+.modal.tutorial {
   max-width: 620px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.tutorial-body {
+.tutorial > * {
+  flex-shrink: 0;
+}
+
+.tutorial > .tutorial-body {
+  flex: 0 1 auto;
+  min-height: min(220px, 40vh);
+  overflow-y: auto;
   font-size: 1rem;
   line-height: 1.55;
-  min-height: 220px;
 }
 
 .tutorial-body p,

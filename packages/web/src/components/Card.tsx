@@ -2,7 +2,8 @@ import { fmt } from '../format';
 
 interface Props {
   value: number | null;
-  size?: 'sm' | 'md' | 'lg';
+  /** `xs` is the phone card strip's size. */
+  size?: 'xs' | 'sm' | 'md' | 'lg';
   label?: string;
 }
 
