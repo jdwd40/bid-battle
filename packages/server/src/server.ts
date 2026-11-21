@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createHttpServer, type ServerResponse } from 'node:http';
 import { Server as SocketServer, type Socket } from 'socket.io';
 import { secureRng, type MatchConfig, type Rng } from '@bid-battle/engine';
 import { realClock, type Clock } from './clock.js';
@@ -61,8 +61,10 @@ export function createGameServer(opts: GameServerOptions = {}) {
   const sockets = new Map<string, Set<GameSocket>>(); // token -> sockets
 
   const httpServer = createHttpServer((req, res) => {
-    if (req.url === '/status') return serveStatus(res);
-    serveStatic(req, res, opts.staticDir);
+    const path = (req.url ?? '/').split('?')[0];
+    if (path === '/status') return serveStatus(res);
+    if (path === '/health') return serveHealth(res);
+    serveStatic(path, res, opts.staticDir);
   });
 
   /** Deploy check: a deploy ends every room, so only deploy when `activeMatches` is 0. */
@@ -274,19 +276,19 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-function serveStatic(req: IncomingMessage, res: ServerResponse, dir?: string) {
-  if (req.url === '/health') {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true }));
-    return;
-  }
+function serveHealth(res: ServerResponse) {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ ok: true }));
+}
+
+/** `path` is the request URL without its query string. */
+function serveStatic(path: string, res: ServerResponse, dir?: string) {
   if (!dir) {
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end('Bid Battle server running. Start the web client with `npm run dev`.');
     return;
   }
-  const url = (req.url ?? '/').split('?')[0];
-  let file = normalize(join(dir, url));
+  let file = normalize(join(dir, path));
   if (!file.startsWith(normalize(dir))) {
     res.writeHead(403).end();
     return;

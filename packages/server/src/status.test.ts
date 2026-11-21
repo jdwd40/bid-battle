@@ -67,6 +67,15 @@ describe('status route', () => {
     expect(await status()).toEqual({ activeMatches: 0, openRooms: 1 });
   });
 
+  it('answers /status and /health with a query string', async () => {
+    await start(new FakeClock(), { staticDir: undefined });
+    const statusRes = await fetch(`http://127.0.0.1:${port}/status?probe=1`);
+    expect(statusRes.headers.get('content-type')).toContain('application/json');
+    expect(await statusRes.json()).toEqual({ activeMatches: 0, openRooms: 0 });
+    const healthRes = await fetch(`http://127.0.0.1:${port}/health?probe=1`);
+    expect(await healthRes.json()).toEqual({ ok: true });
+  });
+
   it('stops counting a match once its idle room is swept', async () => {
     const clock = new FakeClock();
     await start(clock, { idleRoomMs: 1_000 });
