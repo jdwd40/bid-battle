@@ -6,10 +6,10 @@ import {
   applySell,
   buildBotObservation,
   evaluateQuote,
-  expectedTotal,
+  fairEstimate,
   pairTradesFifo,
   projectView,
-  publicBounds,
+  publicRangeFor,
   remainingDeck,
   seededRng,
   shuffle,
@@ -33,7 +33,7 @@ function makeEngine(deck: number[] = DECK_39, opts: { rng?: Rng; config?: any } 
 
 function confirmAll(e: GameEngine, quotes: Record<number, { bid?: number; ask?: number }>, now = 1) {
   for (let s = 0; s < 4; s++) {
-    const r = e.apply(s, { type: 'SUBMIT_QUOTE', ...(quotes[s] ?? {}), confirm: true }, now);
+    const r = e.apply(s, { type: 'SEAL_QUOTE', ...(quotes[s] ?? {}), confirm: true }, now);
     if (!r.ok) throw new Error(`seat ${s}: ${r.error}`);
   }
   expect(e.phase).toBe('TRADING');
@@ -50,10 +50,10 @@ describe('deck and deal', () => {
     expect(FULL_DECK.reduce((a, b) => a + b, 0)).toBe(90);
   });
 
-  it('unconditional expected total is 630/17 and extremes are -15 / 84', () => {
+  it('mean settlement value is 630/17 and extremes are -15 / 84', () => {
     const mean = remainingDeck([]).reduce((a, b) => a + b, 0) / 17;
     expect(mean * 7).toBeCloseTo(630 / 17, 10);
-    expect(publicBounds([])).toEqual({ L: -15, U: 84 });
+    expect(publicRangeFor([])).toEqual({ L: -15, U: 84 });
   });
 
   it('deals seven unique cards and keeps ten unused', () => {
@@ -73,16 +73,16 @@ describe('deck and deal', () => {
   });
 });
 
-describe('public risk bounds', () => {
+describe('public range', () => {
   it('tightens with public cards using only public info', () => {
-    expect(publicBounds([15])).toEqual({ L: -5, U: 84 });
-    expect(publicBounds([-20, -10])).toEqual({ L: -30 + 15, U: -30 + 15 + 14 + 13 + 12 + 11 });
+    expect(publicRangeFor([15])).toEqual({ L: -5, U: 84 });
+    expect(publicRangeFor([-20, -10])).toEqual({ L: -30 + 15, U: -30 + 15 + 14 + 13 + 12 + 11 });
   });
 
   it('is independent of private cards', () => {
     const a = makeEngine([15, 14, 13, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, -10, -20]);
     const b = makeEngine([-20, -10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-    expect(a.bounds()).toEqual(b.bounds());
+    expect(a.publicRange()).toEqual(b.publicRange());
     const quotes = { 0: { bid: 5, ask: 60 }, 1: {}, 2: {}, 3: {} };
     confirmAll(a, quotes);
     confirmAll(b, quotes);
@@ -90,96 +90,96 @@ describe('public risk bounds', () => {
       ok(a.apply(s, { type: 'PASS' }, 2));
       ok(b.apply(s, { type: 'PASS' }, 2));
     }
-    // After the first reveal, both see the same public card and thus the same bounds.
+    // After the first reveal, both see the same public card and thus the same public range.
     expect(a.publicCards()).toEqual([1]);
     expect(b.publicCards()).toEqual([3]);
-    expect(a.bounds()).toEqual(publicBounds([1]));
-    expect(b.bounds()).toEqual(publicBounds([3]));
+    expect(a.publicRange()).toEqual(publicRangeFor([1]));
+    expect(b.publicRange()).toEqual(publicRangeFor([3]));
   });
 });
 
 describe('risk reservation', () => {
-  const bounds = publicBounds([]);
+  const publicRange = publicRangeFor([]);
   const fresh = { B: 100, q: 0, C: 0 };
 
   it('buying one at 36 risks 51', () => {
-    expect(worstLoss(applyBuy(fresh, 36), bounds)).toBe(51);
-    expect(evaluateQuote(fresh, { bid: 36 }, bounds, 2)).toMatchObject({ ok: true, reserved: 51 });
+    expect(worstLoss(applyBuy(fresh, 36), publicRange)).toBe(51);
+    expect(evaluateQuote(fresh, { bid: 36 }, publicRange, 2)).toMatchObject({ ok: true, reserved: 51 });
   });
 
   it('buying two at 36 risks 102 and is forbidden', () => {
     const two = applyBuy(applyBuy(fresh, 36), 36);
-    expect(worstLoss(two, bounds)).toBe(102);
-    expect(evaluateQuote(applyBuy(fresh, 36), { bid: 36 }, bounds, 2).ok).toBe(false);
+    expect(worstLoss(two, publicRange)).toBe(102);
+    expect(evaluateQuote(applyBuy(fresh, 36), { bid: 36 }, publicRange, 2).ok).toBe(false);
   });
 
   it('buy 32 / sell 36 locks four credits', () => {
     const p = applySell(applyBuy(fresh, 32), 36);
     expect(p.q).toBe(0);
     expect(p.C).toBe(4);
-    expect(worstLoss(p, bounds)).toBe(0);
+    expect(worstLoss(p, publicRange)).toBe(0);
   });
 
   it('enumerates every fill subset and reserves the maximum', () => {
-    const ev = evaluateQuote(fresh, { bid: 30, ask: 40 }, bounds, 2);
+    const ev = evaluateQuote(fresh, { bid: 30, ask: 40 }, publicRange, 2);
     expect(ev.ok).toBe(true);
     expect(ev.reserved).toBe(45); // bid alone: -30 - 15 = -45
     expect(ev.worstSubset).toEqual(['bid']);
-    expect(evaluateQuote({ B: 40, q: 0, C: 0 }, { bid: 30, ask: 40 }, bounds, 2).ok).toBe(false);
-    expect(evaluateQuote({ B: 45, q: 0, C: 0 }, { bid: 30, ask: 40 }, bounds, 2).ok).toBe(true);
+    expect(evaluateQuote({ B: 40, q: 0, C: 0 }, { bid: 30, ask: 40 }, publicRange, 2).ok).toBe(false);
+    expect(evaluateQuote({ B: 45, q: 0, C: 0 }, { bid: 30, ask: 40 }, publicRange, 2).ok).toBe(true);
   });
 
   it('enforces position limits across subsets', () => {
-    expect(evaluateQuote({ B: 100, q: 2, C: -40 }, { bid: 10 }, bounds, 2).ok).toBe(false);
-    expect(evaluateQuote({ B: 100, q: 2, C: -40 }, { ask: 30 }, bounds, 2).ok).toBe(true);
+    expect(evaluateQuote({ B: 100, q: 2, C: -40 }, { bid: 10 }, publicRange, 2).ok).toBe(false);
+    expect(evaluateQuote({ B: 100, q: 2, C: -40 }, { ask: 30 }, publicRange, 2).ok).toBe(true);
   });
 
   it('handles negative prices without free money', () => {
     const sold = applySell(fresh, -5); // short at -5: loses when V is high
-    expect(worstLoss(sold, bounds)).toBe(89);
+    expect(worstLoss(sold, publicRange)).toBe(89);
     const bought = applyBuy(fresh, -10); // long at -10: loses only if V < -10
-    expect(worstLoss(bought, bounds)).toBe(5);
-    expect(evaluateQuote(fresh, { bid: -14, ask: -12 }, bounds, 2).ok).toBe(true);
-    expect(evaluateQuote(fresh, { bid: -16 }, bounds, 2).ok).toBe(true); // affordable but...
+    expect(worstLoss(bought, publicRange)).toBe(5);
+    expect(evaluateQuote(fresh, { bid: -14, ask: -12 }, publicRange, 2).ok).toBe(true);
+    expect(evaluateQuote(fresh, { bid: -16 }, publicRange, 2).ok).toBe(true); // affordable but...
   });
 
   it('a zero-balance player cannot take exposure', () => {
-    expect(evaluateQuote({ B: 0, q: 0, C: 0 }, { bid: 30 }, bounds, 2).ok).toBe(false);
-    expect(evaluateQuote({ B: 0, q: 0, C: 0 }, {}, bounds, 2).ok).toBe(true);
+    expect(evaluateQuote({ B: 0, q: 0, C: 0 }, { bid: 30 }, publicRange, 2).ok).toBe(false);
+    expect(evaluateQuote({ B: 0, q: 0, C: 0 }, {}, publicRange, 2).ok).toBe(true);
   });
 });
 
 describe('quote preparation', () => {
   it('rejects out-of-range, non-integer, crossed and unaffordable quotes with explanations', () => {
     const e = makeEngine();
-    expect(e.apply(0, { type: 'SUBMIT_QUOTE', bid: 85, confirm: false }, 1)).toMatchObject({ ok: false });
-    expect(e.apply(0, { type: 'SUBMIT_QUOTE', bid: -16, confirm: false }, 1)).toMatchObject({ ok: false });
-    expect(e.apply(0, { type: 'SUBMIT_QUOTE', bid: 30.5, confirm: false }, 1)).toMatchObject({ ok: false });
-    expect(e.apply(0, { type: 'SUBMIT_QUOTE', bid: 40, ask: 40, confirm: false }, 1)).toMatchObject({ ok: false });
-    const r = e.apply(0, { type: 'SUBMIT_QUOTE', bid: 36, ask: 90, confirm: false }, 1);
+    expect(e.apply(0, { type: 'SEAL_QUOTE', bid: 85, confirm: false }, 1)).toMatchObject({ ok: false });
+    expect(e.apply(0, { type: 'SEAL_QUOTE', bid: -16, confirm: false }, 1)).toMatchObject({ ok: false });
+    expect(e.apply(0, { type: 'SEAL_QUOTE', bid: 30.5, confirm: false }, 1)).toMatchObject({ ok: false });
+    expect(e.apply(0, { type: 'SEAL_QUOTE', bid: 40, ask: 40, confirm: false }, 1)).toMatchObject({ ok: false });
+    const r = e.apply(0, { type: 'SEAL_QUOTE', bid: 36, ask: 90, confirm: false }, 1);
     expect(r.ok).toBe(false);
     expect((r as any).error).toContain('range');
-    ok(e.apply(0, { type: 'SUBMIT_QUOTE', bid: -15, ask: 84, confirm: false }, 1));
+    ok(e.apply(0, { type: 'SEAL_QUOTE', bid: -15, ask: 84, confirm: false }, 1));
     const poor = makeEngine(DECK_39, { config: { startingCredits: 50 } });
-    const r2 = poor.apply(0, { type: 'SUBMIT_QUOTE', bid: 84, confirm: false }, 1);
+    const r2 = poor.apply(0, { type: 'SEAL_QUOTE', bid: 84, confirm: false }, 1);
     expect(r2.ok).toBe(false);
     expect((r2 as any).error).toContain('not affordable');
-    ok(poor.apply(0, { type: 'SUBMIT_QUOTE', bid: 30, confirm: false }, 1)); // risks 45 <= 50
+    ok(poor.apply(0, { type: 'SEAL_QUOTE', bid: 30, confirm: false }, 1)); // risks 45 <= 50
   });
 
-  it('keeps submissions sealed until everyone confirms, then publishes together', () => {
+  it('keeps quotes sealed until everyone confirms, then publishes together', () => {
     const e = makeEngine();
-    ok(e.apply(0, { type: 'SUBMIT_QUOTE', bid: 30, ask: 40, confirm: false }, 1));
-    ok(e.apply(0, { type: 'SUBMIT_QUOTE', bid: 31, ask: 41, confirm: true }, 1));
-    expect(e.apply(0, { type: 'SUBMIT_QUOTE', bid: 32, confirm: true }, 1).ok).toBe(false); // locked
+    ok(e.apply(0, { type: 'SEAL_QUOTE', bid: 30, ask: 40, confirm: false }, 1));
+    ok(e.apply(0, { type: 'SEAL_QUOTE', bid: 31, ask: 41, confirm: true }, 1));
+    expect(e.apply(0, { type: 'SEAL_QUOTE', bid: 32, confirm: true }, 1).ok).toBe(false); // already confirmed
     const v1 = projectView(e.state, 1, 1);
     expect(v1.seats[0].quote).toEqual({});
-    expect(v1.seats[0].submissionConfirmed).toBe(true);
+    expect(v1.seats[0].sealedQuoteConfirmed).toBe(true);
     expect(JSON.stringify(v1)).not.toContain('"bid":31');
-    ok(e.apply(1, { type: 'SUBMIT_QUOTE', ask: 50, confirm: true }, 1));
-    ok(e.apply(2, { type: 'SUBMIT_QUOTE', confirm: true }, 1));
+    ok(e.apply(1, { type: 'SEAL_QUOTE', ask: 50, confirm: true }, 1));
+    ok(e.apply(2, { type: 'SEAL_QUOTE', confirm: true }, 1));
     expect(e.phase).toBe('QUOTE_PREPARATION');
-    ok(e.apply(3, { type: 'SUBMIT_QUOTE', confirm: true }, 1));
+    ok(e.apply(3, { type: 'SEAL_QUOTE', confirm: true }, 1));
     expect(e.phase).toBe('TRADING');
     expect(e.state.seats[0].quote).toEqual({ bid: 31, ask: 41 });
     expect(e.state.seats[1].quote).toEqual({ ask: 50 });
@@ -188,8 +188,8 @@ describe('quote preparation', () => {
 
   it('timeout publishes only confirmed quotes', () => {
     const e = makeEngine();
-    ok(e.apply(0, { type: 'SUBMIT_QUOTE', bid: 30, confirm: true }, 1));
-    ok(e.apply(1, { type: 'SUBMIT_QUOTE', bid: 20, ask: 60, confirm: false }, 1)); // never confirmed
+    ok(e.apply(0, { type: 'SEAL_QUOTE', bid: 30, confirm: true }, 1));
+    ok(e.apply(1, { type: 'SEAL_QUOTE', bid: 20, ask: 60, confirm: false }, 1)); // never confirmed
     expect(e.tick(19_999)).toBe(false);
     expect(e.tick(20_000)).toBe(true);
     expect(e.phase).toBe('TRADING');
@@ -446,16 +446,16 @@ describe('phase machine, expiry and rotation', () => {
 });
 
 describe('views and information hiding', () => {
-  it('hides other private cards, hidden community cards, unused cards and sealed submissions', () => {
+  it('hides other private cards, hidden community cards, unused cards and sealed quotes', () => {
     const e = makeEngine();
-    ok(e.apply(1, { type: 'SUBMIT_QUOTE', bid: 30, ask: 40, confirm: true }, 1));
+    ok(e.apply(1, { type: 'SEAL_QUOTE', bid: 30, ask: 40, confirm: true }, 1));
     const v = projectView(e.state, 0, 1);
     expect(v.seats[0].privateCard).toBe(10);
     expect(v.seats.slice(1).every((s) => s.privateCard === null)).toBe(true);
     expect(v.communityCards).toEqual([null, null, null]);
     expect(JSON.stringify(v)).not.toContain('unused');
     expect(v.seats[1].quote).toEqual({});
-    expect(v.me!.submission).toBeDefined();
+    expect(v.me!.sealedQuote).toBeDefined();
     const json = JSON.stringify(v);
     expect(json).not.toMatch(/"bid":30/);
     expect(json).not.toMatch(/"ask":40/);
@@ -479,7 +479,7 @@ describe('views and information hiding', () => {
 
   it('reports reserved risk and available credits for the local player', () => {
     const e = makeEngine();
-    ok(e.apply(0, { type: 'SUBMIT_QUOTE', bid: 36, confirm: false }, 1));
+    ok(e.apply(0, { type: 'SEAL_QUOTE', bid: 36, confirm: false }, 1));
     const v = projectView(e.state, 0, 1);
     expect(v.me!.reserved).toBe(51);
     expect(v.me!.available).toBe(49);
@@ -487,29 +487,29 @@ describe('views and information hiding', () => {
 
   it('bot observation is structurally restricted', () => {
     const e = makeEngine();
-    ok(e.apply(1, { type: 'SUBMIT_QUOTE', bid: 30, ask: 40, confirm: true }, 1));
+    ok(e.apply(1, { type: 'SEAL_QUOTE', bid: 30, ask: 40, confirm: true }, 1));
     const obs = buildBotObservation(e.state, 0);
     expect(Object.keys(obs).sort()).toEqual(
-      ['bounds', 'cycle', 'cyclesPerRound', 'myQuote', 'opponents', 'ownCard', 'pendingCounterForMe', 'phase', 'portfolio', 'positionLimit', 'publicCards', 'publishedQuotes', 'round', 'seat', 'tradesThisRound'].sort(),
+      ['publicRange', 'cycle', 'cyclesPerRound', 'myQuote', 'opponents', 'ownCard', 'pendingCounterForMe', 'phase', 'portfolio', 'positionLimit', 'publicCards', 'publishedQuotes', 'round', 'seat', 'tradesThisRound'].sort(),
     );
     expect(obs.ownCard).toBe(10);
     const json = JSON.stringify(obs);
     expect(json).not.toContain('privateCard');
     expect(json).not.toContain('unused');
-    expect(json).not.toContain('submission');
+    expect(json).not.toContain('sealedQuote');
     expect(obs.opponents.every((o) => Object.keys(o.quote).length === 0)).toBe(true);
     expect(obs.publicCards).toEqual([]);
   });
 });
 
 describe('bots', () => {
-  it('computes the conditional expected total', () => {
+  it('computes the fair estimate', () => {
     // own 15, no public: 15 + 6 * (75/16)
-    expect(expectedTotal(15, [])).toBeCloseTo(15 + 6 * (75 / 16), 10);
-    expect(expectedTotal(-20, [15, 14])).toBeCloseTo(9 + 4 * ((90 - 9) / 14), 10);
+    expect(fairEstimate(15, [])).toBeCloseTo(15 + 6 * (75 / 16), 10);
+    expect(fairEstimate(-20, [15, 14])).toBeCloseTo(9 + 4 * ((90 - 9) / 14), 10);
   });
 
-  it('seeded all-AI matches obey every invariant and trade meaningfully', () => {
+  it('seeded all-bot matches obey every invariant and trade meaningfully', () => {
     let totalTrades = 0;
     for (let seed = 1; seed <= 150; seed++) {
       const { engine } = simulateMatch(seed, ['easy', 'normal', 'hard', seed % 2 ? 'normal' : 'hard']);

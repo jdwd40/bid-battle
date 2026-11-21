@@ -5,10 +5,10 @@ import {
   applySell,
   checkPortfolio,
   evaluateQuote,
-  publicBounds,
-  trimQuote,
+  publicRangeFor,
+  applyRiskCancellation,
   validateQuotePrices,
-  type Bounds,
+  type PublicRange,
   type Portfolio,
   type QuoteSides,
 } from './risk.js';
@@ -65,7 +65,7 @@ export class GameEngine {
         privateCard: null,
         position: 0,
         cashflow: 0,
-        submission: null,
+        sealedQuote: null,
         quote: {},
         trades: [],
         hasActedThisCycle: false,
@@ -98,8 +98,8 @@ export class GameEngine {
     return this.state.communityCards.slice(0, this.state.revealedCount);
   }
 
-  bounds(): Bounds {
-    return publicBounds(this.publicCards());
+  publicRange(): PublicRange {
+    return publicRangeFor(this.publicCards());
   }
 
   portfolioOf(seat: number): Portfolio {
@@ -112,7 +112,7 @@ export class GameEngine {
     const st = this.state;
     switch (st.phase) {
       case 'QUOTE_PREPARATION':
-        return st.seats.filter((s) => !s.submission?.confirmed).map((s) => s.index);
+        return st.seats.filter((s) => !s.sealedQuote?.confirmed).map((s) => s.index);
       case 'TRADING':
         if (st.pendingCounter) return [st.pendingCounter.target];
         return st.turnSeat === null ? [] : [st.turnSeat];
@@ -147,7 +147,7 @@ export class GameEngine {
       s.position = 0;
       s.cashflow = 0;
       s.trades = [];
-      s.submission = null;
+      s.sealedQuote = null;
       s.quote = {};
       s.ready = false;
       s.hasActedThisCycle = false;
@@ -168,7 +168,7 @@ export class GameEngine {
     st.turnSeat = null;
     st.pendingCounter = null;
     for (const s of st.seats) {
-      s.submission = { confirmed: false };
+      s.sealedQuote = { confirmed: false };
       s.hasActedThisCycle = false;
       s.quote = {};
     }
@@ -181,14 +181,14 @@ export class GameEngine {
     const st = this.state;
     const published: Array<{ seat: number; bid?: number; ask?: number }> = [];
     for (const s of st.seats) {
-      const sub = s.submission;
+      const sealed = s.sealedQuote;
       s.quote = {};
-      if (sub?.confirmed) {
-        if (sub.bid !== undefined) s.quote.bid = sub.bid;
-        if (sub.ask !== undefined) s.quote.ask = sub.ask;
+      if (sealed?.confirmed) {
+        if (sealed.bid !== undefined) s.quote.bid = sealed.bid;
+        if (sealed.ask !== undefined) s.quote.ask = sealed.ask;
       }
       published.push({ seat: s.index, ...s.quote });
-      s.submission = null;
+      s.sealedQuote = null;
     }
     this.log({ type: 'QUOTES_PUBLISHED', quotes: published }, now);
     st.phase = 'TRADING';
@@ -316,7 +316,7 @@ export class GameEngine {
     if (st.deadline === null || now < st.deadline) return false;
     switch (st.phase) {
       case 'QUOTE_PREPARATION':
-        this.publishQuotes(now); // unconfirmed submissions produce no quote
+        this.publishQuotes(now); // unconfirmed sealed quotes produce no quote
         return true;
       case 'TRADING':
         if (st.pendingCounter) {
@@ -342,8 +342,8 @@ export class GameEngine {
     const st = this.state;
     if (!Number.isInteger(seat) || seat < 0 || seat >= st.config.seats) return fail('invalid seat');
     switch (cmd.type) {
-      case 'SUBMIT_QUOTE':
-        return this.submitQuote(seat, cmd, now);
+      case 'SEAL_QUOTE':
+        return this.sealQuote(seat, cmd, now);
       case 'BUY':
         return this.takeQuote(seat, cmd.target, 'ask', cmd.price, now);
       case 'SELL':
@@ -361,23 +361,23 @@ export class GameEngine {
     }
   }
 
-  private submitQuote(seat: number, cmd: { bid?: number; ask?: number; confirm: boolean }, now: number): CommandResult {
+  private sealQuote(seat: number, cmd: { bid?: number; ask?: number; confirm: boolean }, now: number): CommandResult {
     const st = this.state;
     if (st.phase !== 'QUOTE_PREPARATION') return fail('quotes can only be prepared during quote preparation');
     const s = st.seats[seat];
-    if (s.submission?.confirmed) return fail('your quote is already confirmed');
+    if (s.sealedQuote?.confirmed) return fail('your quote is already confirmed');
     const quote: QuoteSides = {};
     if (cmd.bid !== undefined && cmd.bid !== null) quote.bid = cmd.bid;
     if (cmd.ask !== undefined && cmd.ask !== null) quote.ask = cmd.ask;
-    const priceError = validateQuotePrices(quote, this.bounds());
+    const priceError = validateQuotePrices(quote, this.publicRange());
     if (priceError) return fail(priceError);
-    const ev = evaluateQuote(this.portfolioOf(seat), quote, this.bounds(), st.config.positionLimit);
+    const ev = evaluateQuote(this.portfolioOf(seat), quote, this.publicRange(), st.config.positionLimit);
     if (!ev.ok) return fail(`quote not affordable ${ev.reason}`);
-    s.submission = { ...quote, confirmed: cmd.confirm };
+    s.sealedQuote = { ...quote, confirmed: cmd.confirm };
     st.version += 1;
     if (cmd.confirm) {
       this.log({ type: 'QUOTE_CONFIRMED', seat }, now);
-      if (st.seats.every((x) => x.submission?.confirmed)) this.publishQuotes(now);
+      if (st.seats.every((x) => x.sealedQuote?.confirmed)) this.publishQuotes(now);
     }
     return OK;
   }
@@ -405,7 +405,7 @@ export class GameEngine {
     const exec = this.executeTrade(buyer, seller, price, 'quote', seat, now);
     if (!exec.ok) return exec;
     delete st.seats[target].quote[side];
-    this.trimQuotes([buyer, seller], now);
+    this.applyRiskCancellations([buyer, seller], now);
     this.advanceTurn(now);
     return OK;
   }
@@ -420,8 +420,8 @@ export class GameEngine {
     const quoted = st.seats[target].quote[side];
     if (quoted === undefined) return fail(`${st.seats[target].name} has no ${side} to counter`);
     if (!Number.isInteger(price)) return fail('counter price must be a whole number');
-    const b = this.bounds();
-    if (price < b.L || price > b.U) return fail(`price ${price} is outside the possible range ${b.L} to ${b.U}`);
+    const b = this.publicRange();
+    if (price < b.L || price > b.U) return fail(`price ${price} is outside the public range ${b.L} to ${b.U}`);
     if (side === 'ask' && price >= quoted) return fail(`a counter to an ask of ${quoted} must be strictly lower`);
     if (side === 'bid' && price <= quoted) return fail(`a counter to a bid of ${quoted} must be strictly higher`);
     const buyer = side === 'ask' ? seat : target;
@@ -459,7 +459,7 @@ export class GameEngine {
       }
       delete st.seats[pc.target].quote[pc.side];
       this.log({ type: 'COUNTER_ACCEPTED', counterId }, now);
-      this.trimQuotes([buyer, seller], now);
+      this.applyRiskCancellations([buyer, seller], now);
     } else {
       this.log({ type: 'COUNTER_DECLINED', counterId, reason: 'manual' }, now);
     }
@@ -490,7 +490,7 @@ export class GameEngine {
 
   private checkExecution(buyer: number, seller: number, price: number): string | null {
     const st = this.state;
-    const b = this.bounds();
+    const b = this.publicRange();
     const bp = checkPortfolio(applyBuy(this.portfolioOf(buyer), price), b, st.config.positionLimit);
     if (!bp.ok) return `${st.seats[buyer].name} cannot buy: ${bp.reason}`;
     const sp = checkPortfolio(applySell(this.portfolioOf(seller), price), b, st.config.positionLimit);
@@ -502,7 +502,7 @@ export class GameEngine {
     const st = this.state;
     const problem = this.checkExecution(buyer, seller, price);
     if (problem) return fail(problem);
-    const b = this.bounds();
+    const b = this.publicRange();
     const pub = this.publicCards();
     const bs = st.seats[buyer];
     const ss = st.seats[seller];
@@ -511,7 +511,7 @@ export class GameEngine {
     ss.position -= 1;
     ss.cashflow += price;
     const trade: Trade = { id: st.nextTradeId++, round: st.round, cycle: st.cycle, buyer, seller, price, via, initiator };
-    const ctx = (own: number): TradeContext => ({ ownCard: own, publicCards: pub.slice(), bounds: b, cycle: st.cycle });
+    const ctx = (own: number): TradeContext => ({ ownCard: own, publicCards: pub.slice(), publicRange: b, cycle: st.cycle });
     bs.trades.push({ tradeId: trade.id, cycle: st.cycle, side: 'BUY', price, counterparty: seller, via, context: ctx(bs.privateCard!) });
     ss.trades.push({ tradeId: trade.id, cycle: st.cycle, side: 'SELL', price, counterparty: buyer, via, context: ctx(ss.privateCard!) });
     this.log({ type: 'TRADE', trade }, now);
@@ -519,12 +519,12 @@ export class GameEngine {
   }
 
   /** Cancel quote sides that became unsafe after a position change, logging each cancellation. */
-  private trimQuotes(seats: number[], now: number) {
+  private applyRiskCancellations(seats: number[], now: number) {
     const st = this.state;
-    const b = this.bounds();
+    const b = this.publicRange();
     for (const seat of seats) {
       const s = st.seats[seat];
-      const { quote, cancellations } = trimQuote(this.portfolioOf(seat), s.quote, b, st.config.positionLimit);
+      const { quote, cancellations } = applyRiskCancellation(this.portfolioOf(seat), s.quote, b, st.config.positionLimit);
       s.quote = quote;
       for (const c of cancellations) this.log({ type: 'QUOTE_CANCELLED', seat, cancellation: c }, now);
     }

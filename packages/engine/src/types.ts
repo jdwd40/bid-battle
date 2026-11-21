@@ -1,5 +1,5 @@
 import type { Difficulty, MatchConfig } from './config.js';
-import type { Bounds, Cancellation, QuoteSides } from './risk.js';
+import type { PublicRange, Cancellation, QuoteSides } from './risk.js';
 
 export type Phase =
   | 'LOBBY'
@@ -22,7 +22,7 @@ export interface SeatSetup {
 export interface TradeContext {
   ownCard: number;
   publicCards: number[];
-  bounds: Bounds;
+  publicRange: PublicRange;
   cycle: number;
 }
 
@@ -49,7 +49,7 @@ export interface SeatTradeRecord {
   context: TradeContext;
 }
 
-export interface QuoteSubmission {
+export interface SealedQuote {
   bid?: number;
   ask?: number;
   confirmed: boolean;
@@ -68,8 +68,8 @@ export interface SeatState {
   position: number;
   /** Cashflow offset C. */
   cashflow: number;
-  /** Sealed submission during QUOTE_PREPARATION. */
-  submission: QuoteSubmission | null;
+  /** Sealed quote during QUOTE_PREPARATION. */
+  sealedQuote: SealedQuote | null;
   /** Published quote during TRADING (sides disappear when filled/cancelled). */
   quote: QuoteSides;
   trades: SeatTradeRecord[];
@@ -160,7 +160,7 @@ export interface MatchState {
 }
 
 export type Command =
-  | { type: 'SUBMIT_QUOTE'; bid?: number; ask?: number; confirm: boolean }
+  | { type: 'SEAL_QUOTE'; bid?: number; ask?: number; confirm: boolean }
   | { type: 'BUY'; target: number; price: number }
   | { type: 'SELL'; target: number; price: number }
   | { type: 'COUNTER'; target: number; side: Side; price: number }

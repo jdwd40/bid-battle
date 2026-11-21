@@ -48,7 +48,7 @@ export function describeEvent(e: LoggedEvent, seats: SeatView[]): string | null 
     case 'CYCLE_STARTED':
       return `Cycle ${ev.cycle} — sealed quote preparation. ${name(ev.firstSeat)} will act first.`;
     case 'QUOTE_CONFIRMED':
-      return `${name(ev.seat)} locked in a sealed quote.`;
+      return `${name(ev.seat)} confirmed a sealed quote.`;
     case 'QUOTES_PUBLISHED': {
       const n = ev.quotes.filter((q) => q.bid !== undefined || q.ask !== undefined).length;
       return `Quotes revealed: ${n} trader${n === 1 ? '' : 's'} posted prices.`;
@@ -74,7 +74,7 @@ export function describeEvent(e: LoggedEvent, seats: SeatView[]): string | null 
     case 'COUNTER_DECLINED':
       return ev.reason === 'timeout' ? 'Counter-offer timed out — declined.' : 'Counter-offer declined.';
     case 'QUOTE_CANCELLED':
-      return `${name(ev.seat)}'s ${ev.cancellation.side} at ${fmt(ev.cancellation.price)} was cancelled automatically (${ev.cancellation.reason}).`;
+      return `${name(ev.seat)}'s ${ev.cancellation.side} at ${fmt(ev.cancellation.price)} was removed by risk cancellation (${ev.cancellation.reason}).`;
     case 'SETTLED':
       return `Round ${ev.result.round} settled at ${fmt(ev.result.settlementValue)}.`;
     case 'PLAYER_READY':

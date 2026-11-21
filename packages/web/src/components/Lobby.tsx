@@ -13,7 +13,7 @@ interface Props {
 
 export function Lobby({ view, error, onSetSeat, onStart, onLeave }: Props) {
   const [copied, setCopied] = useState(false);
-  const humans = view.room.seats.filter((s) => s.kind === 'human').length;
+  const players = view.room.seats.filter((s) => s.kind === 'human').length;
   const shareUrl = `${window.location.origin}${window.location.pathname}?room=${view.room.code}`;
 
   const copy = async () => {
@@ -49,22 +49,22 @@ export function Lobby({ view, error, onSetSeat, onStart, onLeave }: Props) {
             <div className="lobby-seat" key={s.index} data-testid={`lobby-seat-${s.index}`}>
               <div className="row" style={{ justifyContent: 'space-between' }}>
                 <span className="muted small">Seat {s.index + 1}</span>
-                {s.kind === 'human' ? <span className="pill human">Human{s.isHost ? ' · Host' : ''}</span> : <span className="pill ai">AI</span>}
+                {s.kind === 'human' ? <span className="pill player">Player{s.isHost ? ' · Host' : ''}</span> : <span className="pill bot">Bot</span>}
               </div>
               <div className="name">{s.name}</div>
               {s.kind === 'human' ? (
                 <div className="muted small">{s.connected ? 'Connected' : 'Disconnected'}</div>
               ) : view.isHost ? (
                 <label className="field">
-                  AI difficulty
+                  Bot difficulty
                   <select className="input" value={s.difficulty} onChange={(e) => onSetSeat(s.index, e.target.value as Difficulty)} data-testid={`difficulty-${s.index}`}>
-                    <option value="easy">Easy — rough estimates, wide spreads</option>
-                    <option value="normal">Normal — correct expected value</option>
+                    <option value="easy">Easy — noisy estimates, wide spreads</option>
+                    <option value="normal">Normal — correct fair estimate</option>
                     <option value="hard">Hard — reads the market</option>
                   </select>
                 </label>
               ) : (
-                <div className="muted small">{difficultyLabel(s.difficulty)} AI</div>
+                <div className="muted small">{difficultyLabel(s.difficulty)} bot</div>
               )}
             </div>
           ))}
@@ -80,7 +80,7 @@ export function Lobby({ view, error, onSetSeat, onStart, onLeave }: Props) {
           </button>
           {view.isHost ? (
             <button className="btn btn-primary" onClick={onStart} data-testid="start-match">
-              {humans === 1 ? 'Start solo match vs 3 AI' : `Start match (${humans} humans, ${4 - humans} AI)`}
+              {players === 1 ? 'Start solo match vs 3 bots' : `Start match (${players} players, ${4 - players} bots)`}
             </button>
           ) : (
             <span className="muted">Waiting for the host to start…</span>

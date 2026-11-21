@@ -23,7 +23,7 @@ function cmd(room: Room, token: string, action: any, id = `c${Math.random()}`) {
 }
 
 describe('Room lobby', () => {
-  it('seats humans, defaults the rest to Normal bots and lets the host tune difficulty', () => {
+  it('seats players, defaults the rest to Normal bots and lets the host tune difficulty', () => {
     const { room } = makeRoom();
     const a = room.addPlayer('Alice');
     const b = room.addPlayer('Bob');
@@ -67,8 +67,8 @@ describe('Room match driving', () => {
     expect(engine.phase).toBe('QUOTE_PREPARATION');
     // bots act after the presentation delay
     clock.advance(10);
-    expect(engine.state.seats.slice(1).every((s) => s.submission?.confirmed)).toBe(true);
-    expect(engine.state.seats[0].submission?.confirmed).toBe(false);
+    expect(engine.state.seats.slice(1).every((s) => s.sealedQuote?.confirmed)).toBe(true);
+    expect(engine.state.seats[0].sealedQuote?.confirmed).toBe(false);
     // human never acts: everything resolves through timeouts and bot actions
     let guard = 0;
     while (engine.phase !== 'MATCH_COMPLETE' && guard++ < 10_000) clock.advance(1000);
@@ -87,8 +87,8 @@ describe('Room match driving', () => {
     room.start('tok1');
     const engine = room.engine!;
     clock.advance(10);
-    expect(cmd(room, 'tok1', { type: 'SUBMIT_QUOTE', bid: 20, ask: 50, confirm: true }).ok).toBe(true);
-    expect(cmd(room, 'tok2', { type: 'SUBMIT_QUOTE', ask: 40, confirm: true }).ok).toBe(true);
+    expect(cmd(room, 'tok1', { type: 'SEAL_QUOTE', bid: 20, ask: 50, confirm: true }).ok).toBe(true);
+    expect(cmd(room, 'tok2', { type: 'SEAL_QUOTE', ask: 40, confirm: true }).ok).toBe(true);
     expect(engine.phase).toBe('TRADING');
     // advance until it's Alice's turn (bots act in between)
     let guard = 0;
@@ -115,9 +115,9 @@ describe('Room match driving', () => {
     room.start('tok1');
     const engine = room.engine!;
     clock.advance(10);
-    cmd(room, 'tok1', { type: 'SUBMIT_QUOTE', bid: 20, ask: 50, confirm: true });
+    cmd(room, 'tok1', { type: 'SEAL_QUOTE', bid: 20, ask: 50, confirm: true });
     const staleVersion = engine.state.phaseVersion;
-    cmd(room, 'tok2', { type: 'SUBMIT_QUOTE', confirm: true });
+    cmd(room, 'tok2', { type: 'SEAL_QUOTE', confirm: true });
     expect(engine.phase).toBe('TRADING');
     expect(room.command({ token: 'tok1', commandId: 'x1', phaseVersion: staleVersion, action: { type: 'PASS' } })).toMatchObject({ ok: false, error: expect.stringContaining('moved on') });
     expect(room.command({ token: 'nobody', commandId: 'x2', phaseVersion: engine.state.phaseVersion, action: { type: 'PASS' } }).ok).toBe(false);
@@ -128,30 +128,30 @@ describe('Room match driving', () => {
     expect(cmd(room, notMyTurn, { type: 'PASS' })).toMatchObject({ ok: false, error: expect.stringContaining('turn') });
   });
 
-  it('AI takes over a disconnected seat at the next boundary and the human reclaims it on reconnect', () => {
+  it('a bot takes over a disconnected seat at the next boundary and the human reclaims it on reconnect', () => {
     const { room, clock } = makeRoom(4);
     room.addPlayer('Alice');
     room.start('tok1');
     const engine = room.engine!;
     clock.advance(10);
-    expect(engine.state.seats[0].submission?.confirmed).toBe(false);
+    expect(engine.state.seats[0].sealedQuote?.confirmed).toBe(false);
     const card = engine.state.seats[0].privateCard;
     room.disconnect('tok1');
-    expect(room.viewFor('tok1')!.aiControlled[0]).toBe(true);
-    clock.advance(10); // takeover bot submits a quote for seat 0
-    expect(engine.state.seats[0].submission?.confirmed ?? engine.phase === 'TRADING').toBeTruthy();
+    expect(room.viewFor('tok1')!.botControlled[0]).toBe(true);
+    clock.advance(10); // takeover bot seals a quote for seat 0
+    expect(engine.state.seats[0].sealedQuote?.confirmed ?? engine.phase === 'TRADING').toBeTruthy();
     expect(engine.phase).toBe('TRADING');
     // reconnect: seat, card and balance preserved, no restart
     const p = room.reconnect('tok1');
     expect(p?.seat).toBe(0);
     expect(engine.state.seats[0].privateCard).toBe(card);
     expect(engine.state.round).toBe(1);
-    expect(room.viewFor('tok1')!.aiControlled[0]).toBe(false);
+    expect(room.viewFor('tok1')!.botControlled[0]).toBe(false);
     // the human now has to act on their own: drive until the engine waits on seat 0 during trading
     let guard = 0;
     while (!(engine.phase === 'TRADING' && engine.awaitingSeats().includes(0)) && guard++ < 200) {
-      if (engine.phase === 'QUOTE_PREPARATION' && !engine.state.seats[0].submission?.confirmed) {
-        expect(cmd(room, 'tok1', { type: 'SUBMIT_QUOTE', confirm: true }).ok).toBe(true);
+      if (engine.phase === 'QUOTE_PREPARATION' && !engine.state.seats[0].sealedQuote?.confirmed) {
+        expect(cmd(room, 'tok1', { type: 'SEAL_QUOTE', confirm: true }).ok).toBe(true);
       } else {
         clock.advance(10);
       }
@@ -159,27 +159,27 @@ describe('Room match driving', () => {
     expect(engine.awaitingSeats()).toEqual([0]);
     const versionBefore = engine.state.version;
     clock.advance(1000);
-    expect(engine.state.version).toBe(versionBefore); // still waiting on the human, no AI action for the seat
+    expect(engine.state.version).toBe(versionBefore); // still waiting on the human, no bot action for the seat
     const pc = engine.state.pendingCounter;
     const action = pc && pc.target === 0 ? { type: 'RESPOND_COUNTER', counterId: pc.id, accept: false } : { type: 'PASS' };
     expect(cmd(room, 'tok1', action).ok).toBe(true);
   });
 
-  it('views never contain other private cards, hidden community cards or sealed submissions', () => {
+  it('views never contain other private cards, hidden community cards or sealed quotes', () => {
     const { room, clock } = makeRoom(6);
     room.addPlayer('Alice');
     room.addPlayer('Bob');
     room.start('tok1');
     const engine = room.engine!;
     clock.advance(10);
-    cmd(room, 'tok2', { type: 'SUBMIT_QUOTE', bid: 17, ask: 63, confirm: true });
+    cmd(room, 'tok2', { type: 'SEAL_QUOTE', bid: 17, ask: 63, confirm: true });
     const view = room.viewFor('tok1')!;
     const g = view.game!;
     expect(g.seats[0].privateCard).toBe(engine.state.seats[0].privateCard);
     expect(g.seats[1].privateCard).toBeNull();
     expect(g.communityCards).toEqual([null, null, null]);
     expect(g.seats[1].quote).toEqual({});
-    expect(g.seats[1].submissionConfirmed).toBe(true);
+    expect(g.seats[1].sealedQuoteConfirmed).toBe(true);
     const json = JSON.stringify(view);
     expect(json).not.toContain('unused');
     expect(json).not.toMatch(/"bid":17/);

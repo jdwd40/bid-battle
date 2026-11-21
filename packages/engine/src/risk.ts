@@ -10,7 +10,7 @@ export interface Portfolio {
   C: number;
 }
 
-export interface Bounds {
+export interface PublicRange {
   L: number;
   U: number;
 }
@@ -34,7 +34,7 @@ export function remainingDeck(removed: readonly number[]): number[] {
  * Publicly possible settlement range given the public community cards.
  * Uses ONLY public information so it never leaks a private card.
  */
-export function publicBounds(publicCards: readonly number[]): Bounds {
+export function publicRangeFor(publicCards: readonly number[]): PublicRange {
   const rest = remainingDeck(publicCards).sort((a, b) => a - b);
   const m = DEALT_CARD_COUNT - publicCards.length;
   const base = publicCards.reduce((s, c) => s + c, 0);
@@ -49,8 +49,8 @@ export function pnlAt(p: Pick<Portfolio, 'q' | 'C'>, V: number): number {
 }
 
 /** Worst possible loss over the public range (never negative). */
-export function worstLoss(p: Pick<Portfolio, 'q' | 'C'>, bounds: Bounds): number {
-  return Math.max(0, -Math.min(pnlAt(p, bounds.L), pnlAt(p, bounds.U)));
+export function worstLoss(p: Pick<Portfolio, 'q' | 'C'>, publicRange: PublicRange): number {
+  return Math.max(0, -Math.min(pnlAt(p, publicRange.L), pnlAt(p, publicRange.U)));
 }
 
 export function applyBuy(p: Portfolio, price: number): Portfolio {
@@ -68,8 +68,8 @@ export interface PortfolioCheck {
 }
 
 /** Validate a single executed portfolio against position and credit limits. */
-export function checkPortfolio(p: Portfolio, bounds: Bounds, positionLimit: number): PortfolioCheck {
-  const wl = worstLoss(p, bounds);
+export function checkPortfolio(p: Portfolio, publicRange: PublicRange, positionLimit: number): PortfolioCheck {
+  const wl = worstLoss(p, publicRange);
   if (Math.abs(p.q) > positionLimit) {
     return { ok: false, reason: `position ${p.q} exceeds limit of ±${positionLimit}`, worstLoss: wl };
   }
@@ -110,12 +110,12 @@ export interface QuoteEvaluation {
  * every fill subset must respect the position limit and worstLoss <= B.
  * Price-range validation is handled separately (see validateQuotePrices).
  */
-export function evaluateQuote(p: Portfolio, quote: QuoteSides, bounds: Bounds, positionLimit: number): QuoteEvaluation {
+export function evaluateQuote(p: Portfolio, quote: QuoteSides, publicRange: PublicRange, positionLimit: number): QuoteEvaluation {
   let reserved = 0;
   let worstSubset: Array<'bid' | 'ask'> = [];
   for (const sub of fillSubsets(quote)) {
     const after = sub.portfolioOf(p);
-    const check = checkPortfolio(after, bounds, positionLimit);
+    const check = checkPortfolio(after, publicRange, positionLimit);
     if (!check.ok) {
       const label = sub.fills.length === 0 ? 'with no fills' : `if ${sub.fills.join(' and ')} filled`;
       return { ok: false, reason: `${label}: ${check.reason}`, reserved: check.worstLoss, worstSubset: sub.fills };
@@ -129,12 +129,12 @@ export function evaluateQuote(p: Portfolio, quote: QuoteSides, bounds: Bounds, p
 }
 
 /** Static price validation for quote sides. */
-export function validateQuotePrices(quote: QuoteSides, bounds: Bounds): string | null {
+export function validateQuotePrices(quote: QuoteSides, publicRange: PublicRange): string | null {
   for (const side of ['bid', 'ask'] as const) {
     const v = quote[side];
     if (v === undefined) continue;
     if (!Number.isInteger(v)) return `${side} must be a whole number`;
-    if (v < bounds.L || v > bounds.U) return `${side} ${v} is outside the possible range ${bounds.L} to ${bounds.U}`;
+    if (v < publicRange.L || v > publicRange.U) return `${side} ${v} is outside the public range ${publicRange.L} to ${publicRange.U}`;
   }
   if (quote.bid !== undefined && quote.ask !== undefined && quote.bid >= quote.ask) {
     return `bid (${quote.bid}) must be strictly below ask (${quote.ask})`;
@@ -149,15 +149,15 @@ export interface Cancellation {
 }
 
 /**
- * Deterministically trim a quote until every fill subset is valid for the portfolio.
+ * Risk cancellation: deterministically remove quote sides until every fill subset is valid for the portfolio.
  * Cancels the side that adds exposure in the direction of the current position first;
  * when flat, cancels the side with the larger stand-alone worst-case loss (ask on ties).
  */
-export function trimQuote(p: Portfolio, quote: QuoteSides, bounds: Bounds, positionLimit: number): { quote: QuoteSides; cancellations: Cancellation[] } {
+export function applyRiskCancellation(p: Portfolio, quote: QuoteSides, publicRange: PublicRange, positionLimit: number): { quote: QuoteSides; cancellations: Cancellation[] } {
   const q: QuoteSides = { ...quote };
   const cancellations: Cancellation[] = [];
   for (let guard = 0; guard < 3; guard++) {
-    const ev = evaluateQuote(p, q, bounds, positionLimit);
+    const ev = evaluateQuote(p, q, publicRange, positionLimit);
     if (ev.ok) break;
     const has = (s: 'bid' | 'ask') => q[s] !== undefined;
     let victim: 'bid' | 'ask';
@@ -166,8 +166,8 @@ export function trimQuote(p: Portfolio, quote: QuoteSides, bounds: Bounds, posit
     else if (p.q > 0) victim = 'bid';
     else if (p.q < 0) victim = 'ask';
     else {
-      const bidLoss = worstLoss(applyBuy(p, q.bid!), bounds);
-      const askLoss = worstLoss(applySell(p, q.ask!), bounds);
+      const bidLoss = worstLoss(applyBuy(p, q.bid!), publicRange);
+      const askLoss = worstLoss(applySell(p, q.ask!), publicRange);
       victim = bidLoss > askLoss ? 'bid' : 'ask';
     }
     cancellations.push({ side: victim, price: q[victim]!, reason: ev.reason ?? 'risk limit' });

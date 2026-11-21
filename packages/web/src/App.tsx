@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { Command, CommandResult, Difficulty } from '@bid-battle/engine';
 import type { ClientView } from '../../server/src/protocol';
 import { GameClient, type ConnectionStatus } from './socket';
+import { safely } from './safely';
 import { JoinScreen } from './components/JoinScreen';
 import { Lobby } from './components/Lobby';
 import { Table } from './components/Table';
@@ -11,23 +12,33 @@ import { Tutorial } from './components/Tutorial';
 
 const TUTORIAL_KEY = 'bidbattle.tutorialSeen';
 
+function roomFromLink(): string | null {
+  return safely(() => new URLSearchParams(window.location.search).get('room'), null);
+}
+
+/** Keep the address bar on the invite link while seated, so a reload or reopened link returns to the seat. */
+function setRoomInLink(code: string | null) {
+  safely(() => {
+    const url = new URL(window.location.href);
+    if (code) url.searchParams.set('room', code);
+    else url.searchParams.delete('room');
+    if (url.href !== window.location.href) window.history.replaceState(null, '', url);
+  }, undefined);
+}
+
 export function App() {
   const clientRef = useRef<GameClient | null>(null);
   const [client, setClient] = useState<GameClient | null>(null);
   const [view, setView] = useState<ClientView | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const [error, setError] = useState<string | null>(null);
+  /** Why the room closed (e.g. the server is restarting). Unlike errors it stays until the player acts. */
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [offset, setOffset] = useState(0);
   const [resuming, setResuming] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
-  const [tutorialSeen, setTutorialSeen] = useState(() => {
-    try {
-      return localStorage.getItem(TUTORIAL_KEY) === '1';
-    } catch {
-      return true;
-    }
-  });
+  const [tutorialSeen, setTutorialSeen] = useState(() => safely(() => localStorage.getItem(TUTORIAL_KEY) === '1', true));
 
   // First time a player reaches the table, walk them through the game.
   const atTable = Boolean(view?.game && view.game.phase !== 'MATCH_COMPLETE');
@@ -37,14 +48,15 @@ export function App() {
   const closeTutorial = () => {
     setShowTutorial(false);
     setTutorialSeen(true);
-    try {
-      localStorage.setItem(TUTORIAL_KEY, '1');
-    } catch {
-      /* ignore */
-    }
+    safely(() => localStorage.setItem(TUTORIAL_KEY, '1'), undefined);
   };
 
   useEffect(() => {
+    const showNotice = (reason: string) => {
+      setView(null);
+      setResuming(false);
+      setNotice(reason);
+    };
     const client = new GameClient({
       onView: (v) => {
         setView(v);
@@ -52,14 +64,21 @@ export function App() {
         if (v?.game) setOffset(v.game.serverNow - Date.now());
       },
       onStatus: setStatus,
-      onKicked: (reason) => {
-        setView(null);
-        setError(reason);
-      },
-    });
+      onSessionEnded: showNotice,
+      onRejoinFailed: showNotice,
+    }, roomFromLink());
     clientRef.current = client;
     setClient(client);
     setResuming(client.hasSession);
+  }, []);
+
+  const seatedRoom = view?.room.code ?? null;
+  useEffect(() => {
+    if (seatedRoom) setRoomInLink(seatedRoom);
+  }, [seatedRoom]);
+  const leave = useCallback(async () => {
+    await clientRef.current?.leaveRoom();
+    setRoomInLink(null);
   }, []);
 
   // Errors fade after a few seconds.
@@ -73,6 +92,7 @@ export function App() {
     setBusy(true);
     const res = await p;
     setBusy(false);
+    setNotice(null);
     if (!res.ok) setError(res.error ?? 'Something went wrong');
     return res;
   }, []);
@@ -92,7 +112,7 @@ export function App() {
     ) : (
       <JoinScreen
         busy={busy || status !== 'online'}
-        error={error}
+        error={error ?? notice}
         onCreate={(name) => handle(client!.createRoom(name))}
         onJoin={(code, name) => handle(client!.joinRoom(code, name))}
         onHowToPlay={() => setShowTutorial(true)}
@@ -105,11 +125,11 @@ export function App() {
         error={error}
         onSetSeat={(seat: number, d: Difficulty) => handle(client.setSeat(seat, d))}
         onStart={() => handle(client.startMatch())}
-        onLeave={() => client.leaveRoom()}
+        onLeave={leave}
       />
     );
   } else if (view.game.phase === 'MATCH_COMPLETE') {
-    screen = <MatchResults game={view.game} onLeave={() => client.leaveRoom()} />;
+    screen = <MatchResults game={view.game} onLeave={leave} />;
   } else if (view.game.phase === 'ROUND_REVIEW' && view.game.lastRound) {
     screen = <RoundReview view={view} game={view.game} offset={offset} error={error} onReady={() => onCommand({ type: 'READY' })} />;
   } else {
