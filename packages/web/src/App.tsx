@@ -17,6 +17,8 @@ export function App() {
   const [view, setView] = useState<ClientView | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const [error, setError] = useState<string | null>(null);
+  /** Why the room closed (e.g. the server is restarting). Unlike errors it stays until the player acts. */
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [offset, setOffset] = useState(0);
   const [resuming, setResuming] = useState(false);
@@ -54,7 +56,8 @@ export function App() {
       onStatus: setStatus,
       onKicked: (reason) => {
         setView(null);
-        setError(reason);
+        setResuming(false);
+        setNotice(reason);
       },
     });
     clientRef.current = client;
@@ -73,6 +76,7 @@ export function App() {
     setBusy(true);
     const res = await p;
     setBusy(false);
+    setNotice(null);
     if (!res.ok) setError(res.error ?? 'Something went wrong');
     return res;
   }, []);
@@ -92,7 +96,7 @@ export function App() {
     ) : (
       <JoinScreen
         busy={busy || status !== 'online'}
-        error={error}
+        error={error ?? notice}
         onCreate={(name) => handle(client!.createRoom(name))}
         onJoin={(code, name) => handle(client!.joinRoom(code, name))}
         onHowToPlay={() => setShowTutorial(true)}
