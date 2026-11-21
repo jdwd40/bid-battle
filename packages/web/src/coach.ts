@@ -22,7 +22,7 @@ export function suggestedQuote(game: PlayerView): { bid: number; ask: number } |
   const g = myFairEstimate(game);
   if (g === null) return null;
   const mid = Math.round(g);
-  return { bid: Math.max(game.bounds.L, mid - 4), ask: Math.min(game.bounds.U, mid + 4) };
+  return { bid: Math.max(game.publicRange.L, mid - 4), ask: Math.min(game.publicRange.U, mid + 4) };
 }
 
 /** Plain-language advice for the current moment at the table. */

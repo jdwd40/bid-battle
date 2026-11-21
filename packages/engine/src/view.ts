@@ -1,4 +1,4 @@
-import { evaluateQuote, publicBounds, type Bounds, type Portfolio, type QuoteSides } from './risk.js';
+import { evaluateQuote, publicRangeFor, type PublicRange, type Portfolio, type QuoteSides } from './risk.js';
 import type { LoggedEvent, MatchState, PendingCounter, Phase, SealedQuote, RoundResult, SeatTradeRecord, Trade } from './types.js';
 import type { Difficulty } from './config.js';
 
@@ -37,7 +37,7 @@ export interface PlayerView {
   positionLimit: number;
   communityCards: Array<number | null>;
   publicCards: number[];
-  bounds: Bounds;
+  publicRange: PublicRange;
   cycleStartSeat: number;
   turnSeat: number | null;
   pendingCounter: PendingCounter | null;
@@ -63,7 +63,7 @@ const REVEALED_PHASES: Phase[] = ['SETTLEMENT', 'ROUND_REVIEW', 'MATCH_COMPLETE'
 export function projectView(state: MatchState, seat: number | null, now: number, eventLimit = 60): PlayerView {
   const revealedAll = REVEALED_PHASES.includes(state.phase);
   const publicCards = state.communityCards.slice(0, state.revealedCount);
-  const bounds = publicBounds(publicCards);
+  const publicRange = publicRangeFor(publicCards);
   const seats: SeatView[] = state.seats.map((s) => ({
     index: s.index,
     name: s.name,
@@ -86,7 +86,7 @@ export function projectView(state: MatchState, seat: number | null, now: number,
     const clean: QuoteSides = {};
     if (outstanding.bid !== undefined) clean.bid = outstanding.bid;
     if (outstanding.ask !== undefined) clean.ask = outstanding.ask;
-    const ev = evaluateQuote(portfolio, clean, bounds, state.config.positionLimit);
+    const ev = evaluateQuote(portfolio, clean, publicRange, state.config.positionLimit);
     me = {
       sealedQuote: s.sealedQuote ? { ...s.sealedQuote } : null,
       portfolio,
@@ -110,7 +110,7 @@ export function projectView(state: MatchState, seat: number | null, now: number,
     positionLimit: state.config.positionLimit,
     communityCards,
     publicCards,
-    bounds,
+    publicRange,
     cycleStartSeat: state.cycleStartSeat,
     turnSeat: state.turnSeat,
     pendingCounter: state.pendingCounter ? { ...state.pendingCounter } : null,
@@ -148,7 +148,7 @@ export interface BotObservation {
   cyclesPerRound: number;
   ownCard: number;
   publicCards: number[];
-  bounds: Bounds;
+  publicRange: PublicRange;
   positionLimit: number;
   portfolio: Portfolio;
   myQuote: QuoteSides;
@@ -179,7 +179,7 @@ export function buildBotObservation(state: MatchState, seat: number): BotObserva
     cyclesPerRound: state.config.cyclesPerRound,
     ownCard: s.privateCard ?? 0,
     publicCards,
-    bounds: publicBounds(publicCards),
+    publicRange: publicRangeFor(publicCards),
     positionLimit: state.config.positionLimit,
     portfolio: { B: s.roundStartBalance, q: s.position, C: s.cashflow },
     myQuote: trading ? { ...s.quote } : {},

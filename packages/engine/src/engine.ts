@@ -5,10 +5,10 @@ import {
   applySell,
   checkPortfolio,
   evaluateQuote,
-  publicBounds,
+  publicRangeFor,
   applyRiskCancellation,
   validateQuotePrices,
-  type Bounds,
+  type PublicRange,
   type Portfolio,
   type QuoteSides,
 } from './risk.js';
@@ -98,8 +98,8 @@ export class GameEngine {
     return this.state.communityCards.slice(0, this.state.revealedCount);
   }
 
-  bounds(): Bounds {
-    return publicBounds(this.publicCards());
+  publicRange(): PublicRange {
+    return publicRangeFor(this.publicCards());
   }
 
   portfolioOf(seat: number): Portfolio {
@@ -369,9 +369,9 @@ export class GameEngine {
     const quote: QuoteSides = {};
     if (cmd.bid !== undefined && cmd.bid !== null) quote.bid = cmd.bid;
     if (cmd.ask !== undefined && cmd.ask !== null) quote.ask = cmd.ask;
-    const priceError = validateQuotePrices(quote, this.bounds());
+    const priceError = validateQuotePrices(quote, this.publicRange());
     if (priceError) return fail(priceError);
-    const ev = evaluateQuote(this.portfolioOf(seat), quote, this.bounds(), st.config.positionLimit);
+    const ev = evaluateQuote(this.portfolioOf(seat), quote, this.publicRange(), st.config.positionLimit);
     if (!ev.ok) return fail(`quote not affordable ${ev.reason}`);
     s.sealedQuote = { ...quote, confirmed: cmd.confirm };
     st.version += 1;
@@ -420,7 +420,7 @@ export class GameEngine {
     const quoted = st.seats[target].quote[side];
     if (quoted === undefined) return fail(`${st.seats[target].name} has no ${side} to counter`);
     if (!Number.isInteger(price)) return fail('counter price must be a whole number');
-    const b = this.bounds();
+    const b = this.publicRange();
     if (price < b.L || price > b.U) return fail(`price ${price} is outside the public range ${b.L} to ${b.U}`);
     if (side === 'ask' && price >= quoted) return fail(`a counter to an ask of ${quoted} must be strictly lower`);
     if (side === 'bid' && price <= quoted) return fail(`a counter to a bid of ${quoted} must be strictly higher`);
@@ -490,7 +490,7 @@ export class GameEngine {
 
   private checkExecution(buyer: number, seller: number, price: number): string | null {
     const st = this.state;
-    const b = this.bounds();
+    const b = this.publicRange();
     const bp = checkPortfolio(applyBuy(this.portfolioOf(buyer), price), b, st.config.positionLimit);
     if (!bp.ok) return `${st.seats[buyer].name} cannot buy: ${bp.reason}`;
     const sp = checkPortfolio(applySell(this.portfolioOf(seller), price), b, st.config.positionLimit);
@@ -502,7 +502,7 @@ export class GameEngine {
     const st = this.state;
     const problem = this.checkExecution(buyer, seller, price);
     if (problem) return fail(problem);
-    const b = this.bounds();
+    const b = this.publicRange();
     const pub = this.publicCards();
     const bs = st.seats[buyer];
     const ss = st.seats[seller];
@@ -511,7 +511,7 @@ export class GameEngine {
     ss.position -= 1;
     ss.cashflow += price;
     const trade: Trade = { id: st.nextTradeId++, round: st.round, cycle: st.cycle, buyer, seller, price, via, initiator };
-    const ctx = (own: number): TradeContext => ({ ownCard: own, publicCards: pub.slice(), bounds: b, cycle: st.cycle });
+    const ctx = (own: number): TradeContext => ({ ownCard: own, publicCards: pub.slice(), publicRange: b, cycle: st.cycle });
     bs.trades.push({ tradeId: trade.id, cycle: st.cycle, side: 'BUY', price, counterparty: seller, via, context: ctx(bs.privateCard!) });
     ss.trades.push({ tradeId: trade.id, cycle: st.cycle, side: 'SELL', price, counterparty: buyer, via, context: ctx(ss.privateCard!) });
     this.log({ type: 'TRADE', trade }, now);
@@ -521,7 +521,7 @@ export class GameEngine {
   /** Cancel quote sides that became unsafe after a position change, logging each cancellation. */
   private applyRiskCancellations(seats: number[], now: number) {
     const st = this.state;
-    const b = this.bounds();
+    const b = this.publicRange();
     for (const seat of seats) {
       const s = st.seats[seat];
       const { quote, cancellations } = applyRiskCancellation(this.portfolioOf(seat), s.quote, b, st.config.positionLimit);

@@ -15,7 +15,7 @@ interface Props {
 function contextLine(t: SeatTradeRecord): string {
   const ev = fairEstimate(t.context.ownCard, t.context.publicCards);
   const pub = t.context.publicCards.length ? t.context.publicCards.map(fmt).join(', ') : 'none';
-  return `Cycle ${t.cycle}: you held ${fmt(t.context.ownCard)}, public cards ${pub}, public range ${fmt(t.context.bounds.L)} to ${fmt(t.context.bounds.U)}, fair estimate ≈ ${ev.toFixed(1)}`;
+  return `Cycle ${t.cycle}: you held ${fmt(t.context.ownCard)}, public cards ${pub}, public range ${fmt(t.context.publicRange.L)} to ${fmt(t.context.publicRange.U)}, fair estimate ≈ ${ev.toFixed(1)}`;
 }
 
 export function RoundReview({ view, game, offset, error, onReady }: Props) {
