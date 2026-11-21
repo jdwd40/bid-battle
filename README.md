@@ -84,7 +84,7 @@ and `CLIENT_IP_HEADER=Fly-Client-IP`. Deploys are manual, once CI passes:
 3. Run `fly deploy` from the repo root.
 
 `GET /status` returns `{ "activeMatches": n, "openRooms": n }`; an active match is one that has
-started and is not complete. On SIGTERM or SIGINT the server refuses new rooms, tells every
+started and is not complete. On SIGTERM or SIGINT the server refuses new rooms and joins (rejoining a seat still works), tells every
 connected player that the server is restarting, waits a second for the notice to arrive, then
 closes.
 
@@ -168,6 +168,8 @@ packages/server   Node + Socket.IO
                   de-duplication (command ids) and stale-phase rejection (phaseVersion)
   server.ts       In-memory room registry, socket transport, per-player view broadcast, static files
   clock.ts        Injectable clock (FakeClock for tests)
+  limits.ts       Abuse limits: rooms per IP, open-room cap, message rate
+  origins.ts      Allowed Socket.IO origins (ALLOWED_ORIGINS, or the local dev origins)
   validate.ts     Payload schema checks
 packages/web      React + Vite client (Join → Lobby → Table → Round review → Results)
   coach.ts        Fair estimate, suggested quote and per-phase plain-language tips
