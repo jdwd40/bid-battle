@@ -20,7 +20,7 @@ vs 3 bots** to play immediately, or share the room code / invite link so friends
 New players get a five-step **How to play** walkthrough the first time they reach the table (reopen it
 any time from the top bar). The table also shows a plain-language coach tip for the current moment
 ("Step 1: set your two prices", "your turn to trade (or pass)"), your fair estimate of the settlement
-value, and suggested starter prices that are prefilled in the quote form.
+value, and suggested prices that are prefilled in the quote form.
 
 Other root commands:
 
