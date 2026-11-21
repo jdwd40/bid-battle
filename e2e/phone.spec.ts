@@ -204,6 +204,76 @@ test('during quote preparation the whole quote form is on my first screen', asyn
   await expectFullyInViewport(refusal, confirm);
 });
 
+test('in round 1 the coach is open below the play area, and activity and help open on tap', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('name-input').fill('Pocket');
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('start-match').click();
+  await page.getByTestId('tutorial-close').click();
+  await expect(page.getByTestId('quote-panel')).toBeVisible();
+
+  // The coach is open in round 1, below the quote form.
+  const tip = page.getByTestId('coach-tip');
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText('fair estimate');
+  const confirm = (await page.getByTestId('confirm-quote').boundingBox())!;
+  const coach = (await page.getByTestId('coach').boundingBox())!;
+  expect(coach.y, 'the coach sits below the quote form').toBeGreaterThan(confirm.y);
+
+  // Activity and help start collapsed; tapping a title opens it without sideways overflow.
+  const feed = page.getByTestId('activity-feed');
+  const rules = page.getByText('Settlement value', { exact: true });
+  await expect(feed).toBeHidden();
+  await expect(rules).toBeHidden();
+  await page.getByText('Activity', { exact: true }).click();
+  await expect(feed).toBeVisible();
+  await page.getByText('Rules & glossary', { exact: true }).click();
+  await expect(rules).toBeVisible();
+  await expectNoHorizontalOverflow(page, 'table with every section open');
+
+  // Tapping the coach's title closes and reopens it.
+  await page.getByTestId('coach-title').click();
+  await expect(tip).toBeHidden();
+  await page.getByTestId('coach-title').click();
+  await expect(tip).toBeVisible();
+  await expectNoHorizontalOverflow(page, 'table with the coach reopened');
+});
+
+test('from round 2 the coach shows only its title until I tap it', async ({ page }, testInfo) => {
+  // This project's server plays one-round matches; the chromium project's server, one port below, plays full matches.
+  const fullMatch = new URL(testInfo.project.use.baseURL!);
+  fullMatch.port = String(Number(fullMatch.port) - 1);
+  await page.goto(fullMatch.href);
+  await page.getByTestId('name-input').fill('Pocket');
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('start-match').click();
+  await page.getByTestId('tutorial-close').click();
+  await expect(page.getByTestId('coach-tip')).toBeVisible();
+
+  // Play out round 1: confirm each quote and pass each turn until the round review, then be ready.
+  const ready = page.getByTestId('ready');
+  await expect(async () => {
+    if (await ready.isVisible()) return;
+    for (const id of ['confirm-quote', 'pass']) {
+      const button = page.getByTestId(id);
+      if ((await button.isVisible()) && (await button.isEnabled())) await button.click({ timeout: 2_000 }).catch(() => {});
+    }
+    await expect(ready).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 120_000 });
+  await ready.click();
+
+  await expect(page.getByTestId('status-bar')).toContainText(/Round 2\//);
+  await expect(page.getByTestId('quote-panel')).toBeVisible();
+  const title = page.getByTestId('coach-title');
+  const tip = page.getByTestId('coach-tip');
+  await expect(title).toBeVisible();
+  await expect(tip).toBeHidden();
+
+  await title.click();
+  await expect(tip).toBeVisible();
+  await expectNoHorizontalOverflow(page, 'round 2 table with the coach open');
+});
+
 /** A price input brings up a numeric keypad and has text large enough that iOS doesn't zoom on focus. */
 async function expectPhonePriceInput(input: Locator): Promise<void> {
   await expect(input).toHaveAttribute('inputmode', 'numeric');
