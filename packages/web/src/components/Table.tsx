@@ -124,8 +124,7 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
           <>
             {traderRows}
             {phoneStats}
-            {errorBox}
-            <ActionPanel game={game} onCommand={onCommand} />
+            <PhoneActionBar game={game} onCommand={onCommand} error={errorBox} />
           </>
         )}
         <CoachBox game={game} />
@@ -612,7 +611,8 @@ function QuotePanel({ game, onCommand, compact = false, error = null }: { game: 
 
 type Mode = { kind: 'idle' } | { kind: 'buy'; target: number; price: number } | { kind: 'sell'; target: number; price: number } | { kind: 'counter' };
 
-function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['onCommand'] }) {
+/** The trading actions' state and rules, shared by the desktop action panel and the phone action bar. */
+function useTradeActions(game: PlayerView, onCommand: Props['onCommand']) {
   const me = game.seat!;
   const local = game.me!;
   const [mode, setMode] = useState<Mode>({ kind: 'idle' });
@@ -633,10 +633,8 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
     return { asks, bids, bestAsk: asks[0] ?? null, bestBid: bids[0] ?? null };
   }, [game.seats, me]);
 
+  // A counter-offer awaiting the player is answered in the counter-offer modal, not with these actions.
   const isMyTurn = game.phase === 'TRADING' && game.turnSeat === me && !game.pendingCounter;
-  // On a phone the panel is pinned to the bottom of the screen only while the player can act on their
-  // turn. A counter-offer awaiting them is answered in the counter-offer modal instead.
-  const pinned = isMyTurn;
   const waitingOn = game.pendingCounter
     ? game.pendingCounter.from === me
       ? `Waiting for ${game.seats[game.pendingCounter.target].name} to answer your counter-offer`
@@ -682,8 +680,40 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
     }
   }
 
+  return {
+    game,
+    mode,
+    busy,
+    levels,
+    isMyTurn,
+    waitingOn,
+    preview,
+    buyReason,
+    sellReason,
+    counterReason,
+    run,
+    buy: () => levels.bestAsk && setMode({ kind: 'buy', target: levels.bestAsk.seat, price: levels.bestAsk.price }),
+    sell: () => levels.bestBid && setMode({ kind: 'sell', target: levels.bestBid.seat, price: levels.bestBid.price }),
+    counter: () => setMode({ kind: 'counter' }),
+    cancel: () => setMode({ kind: 'idle' }),
+    counterOptions,
+    chosen,
+    setCounterTarget,
+    counterPrice,
+    setCounterPrice,
+    counterNum,
+    counterProblem,
+  };
+}
+
+type TradeActions = ReturnType<typeof useTradeActions>;
+
+function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['onCommand'] }) {
+  const a = useTradeActions(game, onCommand);
+  const { mode, busy, levels, isMyTurn, waitingOn, buyReason, sellReason, counterReason } = a;
+
   return (
-    <div className={`panel stack action-panel ${pinned ? 'pinned' : ''}`} data-testid="action-panel">
+    <div className="panel stack action-panel" data-testid="action-panel">
       <h2>{isMyTurn ? 'Your move' : 'Prices on the table'}</h2>
       <div className="best-levels">
         <div className="best bid">
@@ -705,28 +735,16 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
       {mode.kind === 'idle' && (
         <>
           <div className="actions">
-            <button
-              className="btn btn-buy"
-              disabled={busy || Boolean(buyReason)}
-              title={buyReason ?? undefined}
-              onClick={() => levels.bestAsk && setMode({ kind: 'buy', target: levels.bestAsk.seat, price: levels.bestAsk.price })}
-              data-testid="buy"
-            >
+            <button className="btn btn-buy" disabled={busy || Boolean(buyReason)} title={buyReason ?? undefined} onClick={a.buy} data-testid="buy">
               Buy {levels.bestAsk ? `at ${fmt(levels.bestAsk.price)}` : ''}
             </button>
-            <button
-              className="btn btn-sell"
-              disabled={busy || Boolean(sellReason)}
-              title={sellReason ?? undefined}
-              onClick={() => levels.bestBid && setMode({ kind: 'sell', target: levels.bestBid.seat, price: levels.bestBid.price })}
-              data-testid="sell"
-            >
+            <button className="btn btn-sell" disabled={busy || Boolean(sellReason)} title={sellReason ?? undefined} onClick={a.sell} data-testid="sell">
               Sell {levels.bestBid ? `at ${fmt(levels.bestBid.price)}` : ''}
             </button>
-            <button className="btn" disabled={busy || Boolean(counterReason)} title={counterReason ?? undefined} onClick={() => setMode({ kind: 'counter' })} data-testid="counter">
+            <button className="btn" disabled={busy || Boolean(counterReason)} title={counterReason ?? undefined} onClick={a.counter} data-testid="counter">
               Counter-offer
             </button>
-            <button className="btn" disabled={busy || !isMyTurn} title={!isMyTurn ? waitingOn ?? 'Not your turn' : undefined} onClick={() => run({ type: 'PASS' })} data-testid="pass">
+            <button className="btn" disabled={busy || !isMyTurn} title={!isMyTurn ? waitingOn ?? 'Not your turn' : undefined} onClick={() => a.run({ type: 'PASS' })} data-testid="pass">
               Pass
             </button>
           </div>
@@ -740,50 +758,102 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
         </>
       )}
 
-      {(mode.kind === 'buy' || mode.kind === 'sell') && (
-        <TradeConfirm
-          kind={mode.kind}
-          target={game.seats[mode.target].name}
-          price={mode.price}
-          preview={preview(mode.kind, mode.price)}
-          busy={busy}
-          onCancel={() => setMode({ kind: 'idle' })}
-          onConfirm={() => run(mode.kind === 'buy' ? { type: 'BUY', target: mode.target, price: mode.price } : { type: 'SELL', target: mode.target, price: mode.price })}
-        />
-      )}
+      <ActionDetail actions={a} cancelLabel="Back" />
+    </div>
+  );
+}
 
-      {mode.kind === 'counter' && chosen && (
-        <div className="stack">
-          <label className="field">
-            Counter against
-            <select className="input" value={chosen.key} onChange={(e) => setCounterTarget(e.target.value)} data-testid="counter-target">
-              {counterOptions.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            Your price ({chosen.side === 'ask' ? 'you would buy' : 'you would sell'} one contract)
-            <input className="input input-num" type="number" inputMode="numeric" step={1} value={counterPrice} onChange={(e) => setCounterPrice(e.target.value)} data-testid="counter-price" />
-          </label>
-          {counterProblem ? (
-            <div className="hint">Cannot send: {counterProblem}.</div>
-          ) : (
-            <PreviewBox label={`If ${game.seats[chosen.seat].name} accepts`} preview={preview(chosen.side === 'ask' ? 'buy' : 'sell', counterNum)} />
-          )}
-          <div className="row">
-            <button className="btn btn-primary" disabled={busy || Boolean(counterProblem)} onClick={() => run({ type: 'COUNTER', target: chosen.seat, side: chosen.side, price: counterNum })} data-testid="send-counter">
-              Send counter-offer
-            </button>
-            <button className="btn" onClick={() => setMode({ kind: 'idle' })}>
-              Back
-            </button>
+/**
+ * Phones: on the player's turn, one row of Buy, Sell, Counter-offer and Pass pinned to the bottom of the screen.
+ * Off their turn the same row sits in the flow, disabled, so nothing is pinned. Buy, Sell and Counter-offer open
+ * a bottom sheet with the trade confirmation or the counter-offer form. `error` (a refused command's message)
+ * shows in the sheet while it is open, otherwise in the bar.
+ */
+function PhoneActionBar({ game, onCommand, error }: { game: PlayerView; onCommand: Props['onCommand']; error: ReactNode }) {
+  const a = useTradeActions(game, onCommand);
+  const { mode, busy, levels, isMyTurn, waitingOn, buyReason, sellReason, counterReason } = a;
+  const sheetOpen = mode.kind !== 'idle';
+  const price = (p: number | undefined) => p !== undefined && <span className="action-price">{fmt(p)}</span>;
+  return (
+    <>
+      <div className={`action-bar ${isMyTurn ? 'pinned' : ''}`} data-testid="action-panel">
+        {!sheetOpen && error}
+        {!isMyTurn && <div className="muted small">{waitingOn ?? 'Trading has not started.'}</div>}
+        <div className="action-bar-buttons">
+          <button className="btn btn-buy" disabled={busy || Boolean(buyReason)} title={buyReason ?? undefined} onClick={a.buy} data-testid="buy">
+            Buy {price(levels.bestAsk?.price)}
+          </button>
+          <button className="btn btn-sell" disabled={busy || Boolean(sellReason)} title={sellReason ?? undefined} onClick={a.sell} data-testid="sell">
+            Sell {price(levels.bestBid?.price)}
+          </button>
+          <button className="btn" disabled={busy || Boolean(counterReason)} title={counterReason ?? undefined} onClick={a.counter} data-testid="counter">
+            Counter-offer
+          </button>
+          <button className="btn" disabled={busy || !isMyTurn} title={!isMyTurn ? waitingOn ?? 'Not your turn' : undefined} onClick={() => a.run({ type: 'PASS' })} data-testid="pass">
+            Pass
+          </button>
+        </div>
+      </div>
+      {sheetOpen && (
+        <div className="sheet-backdrop" onClick={(e) => e.target === e.currentTarget && a.cancel()}>
+          <div className="sheet stack" role="dialog" aria-modal="true" aria-label={mode.kind === 'counter' ? 'Counter-offer' : mode.kind === 'buy' ? 'Buy' : 'Sell'} data-testid="action-sheet">
+            {error}
+            <ActionDetail actions={a} cancelLabel="Cancel" />
           </div>
-          <div className="muted small">They have 10 seconds to accept or decline. Either way this uses your action for the cycle.</div>
         </div>
       )}
+    </>
+  );
+}
+
+/** The chosen action's trade confirmation or counter-offer form; nothing while no action is chosen. */
+function ActionDetail({ actions: a, cancelLabel }: { actions: TradeActions; cancelLabel: string }) {
+  const { game, mode, busy, chosen, counterProblem, counterNum } = a;
+  if (mode.kind === 'buy' || mode.kind === 'sell') {
+    return (
+      <TradeConfirm
+        kind={mode.kind}
+        target={game.seats[mode.target].name}
+        price={mode.price}
+        preview={a.preview(mode.kind, mode.price)}
+        busy={busy}
+        cancelLabel={cancelLabel}
+        onCancel={a.cancel}
+        onConfirm={() => a.run(mode.kind === 'buy' ? { type: 'BUY', target: mode.target, price: mode.price } : { type: 'SELL', target: mode.target, price: mode.price })}
+      />
+    );
+  }
+  if (mode.kind !== 'counter' || !chosen) return null;
+  return (
+    <div className="stack">
+      <label className="field">
+        Counter against
+        <select className="input" value={chosen.key} onChange={(e) => a.setCounterTarget(e.target.value)} data-testid="counter-target">
+          {a.counterOptions.map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        Your price ({chosen.side === 'ask' ? 'you would buy' : 'you would sell'} one contract)
+        <input className="input input-num" type="number" inputMode="numeric" step={1} value={a.counterPrice} onChange={(e) => a.setCounterPrice(e.target.value)} data-testid="counter-price" />
+      </label>
+      {counterProblem ? (
+        <div className="hint">Cannot send: {counterProblem}.</div>
+      ) : (
+        <PreviewBox label={`If ${game.seats[chosen.seat].name} accepts`} preview={a.preview(chosen.side === 'ask' ? 'buy' : 'sell', counterNum)} />
+      )}
+      <div className="row">
+        <button className="btn btn-primary" disabled={busy || Boolean(counterProblem)} onClick={() => a.run({ type: 'COUNTER', target: chosen.seat, side: chosen.side, price: counterNum })} data-testid="send-counter">
+          Send counter-offer
+        </button>
+        <button className="btn" onClick={a.cancel} data-testid="cancel-action">
+          {cancelLabel}
+        </button>
+      </div>
+      <div className="muted small">They have 10 seconds to accept or decline. Either way this uses your action for the cycle.</div>
     </div>
   );
 }
@@ -811,7 +881,25 @@ function PreviewBox({ label, preview }: { label: string; preview: Preview }) {
   );
 }
 
-function TradeConfirm({ kind, target, price, preview, busy, onCancel, onConfirm }: { kind: 'buy' | 'sell'; target: string; price: number; preview: Preview; busy: boolean; onCancel(): void; onConfirm(): void }) {
+function TradeConfirm({
+  kind,
+  target,
+  price,
+  preview,
+  busy,
+  cancelLabel,
+  onCancel,
+  onConfirm,
+}: {
+  kind: 'buy' | 'sell';
+  target: string;
+  price: number;
+  preview: Preview;
+  busy: boolean;
+  cancelLabel: string;
+  onCancel(): void;
+  onConfirm(): void;
+}) {
   return (
     <div className="stack" data-testid="trade-confirm">
       <div>
@@ -822,8 +910,8 @@ function TradeConfirm({ kind, target, price, preview, busy, onCancel, onConfirm 
         <button className={`btn ${kind === 'buy' ? 'btn-buy' : 'btn-sell'}`} disabled={busy || !preview.ok} onClick={onConfirm} data-testid="confirm-trade">
           Confirm {kind}
         </button>
-        <button className="btn" onClick={onCancel}>
-          Back
+        <button className="btn" onClick={onCancel} data-testid="cancel-action">
+          {cancelLabel}
         </button>
       </div>
     </div>

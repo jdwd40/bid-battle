@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { expectFixedCoverageAtMost, expectFullyInViewport, expectNoHorizontalOverflow } from './support/layout';
+import { expectFixedCoverageAtMost, expectFullyInViewport, expectNoHorizontalOverflow, measureFixedCoverage } from './support/layout';
 
 // Runs only in the `phone` project (see playwright.config.ts): an iPhone SE-sized (375×667) touch viewport, on a
 // server that plays one-round matches so the solo match reaches the match results.
@@ -254,6 +254,82 @@ test('during trading every trader is a compact row right below the card strip, a
   for (const shown of [page.getByTestId('balance'), page.getByTestId('reserved'), cashflow]) await expect(shown).toBeVisible();
 });
 
+/** Create a solo room, start the match, close the tutorial and confirm the suggested quote, so trading starts. */
+async function startSoloTrading(page: Page): Promise<void> {
+  await page.goto('/');
+  await page.getByTestId('name-input').fill('Pocket');
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('start-match').click();
+  await page.getByTestId('tutorial-close').click();
+  await page.getByTestId('confirm-quote').click();
+  await expect(page.getByTestId('phase')).toHaveText('Trading');
+}
+
+test("on my turn a one-row action bar leaves every trader's prices uncovered, and nothing is pinned otherwise", async ({ page }) => {
+  await startSoloTrading(page);
+  const pass = page.getByTestId('pass');
+  await expect(pass).toBeEnabled({ timeout: 30_000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  // Portrait: every trader's bid and ask and all four actions are in view together, and the bar covers none of them.
+  const actions = ['buy', 'sell', 'counter', 'pass'].map((id) => page.getByTestId(id));
+  await expectFullyInViewport(...actions);
+  const count = await page.locator('[data-testid^="seat-"]').count();
+  for (let i = 0; i < count; i++) {
+    for (const id of [`bid-${i}`, `ask-${i}`]) {
+      await expectFullyInViewport(page.getByTestId(id));
+      await expectUncovered(page.getByTestId(id));
+    }
+  }
+  for (const action of actions) await expectUncovered(action);
+  const tops = await Promise.all(actions.map(async (a) => Math.round((await a.boundingBox())!.y)));
+  expect(new Set(tops).size, `the four actions are on one row (tops ${tops.join(', ')})`).toBe(1);
+  await expect(page.getByTestId('action-panel')).toHaveClass(/\bpinned\b/);
+  await expectFixedCoverageAtMost(page, 0.25, 'portrait table on my turn');
+
+  // Landscape: the same bar, with a little more room allowed for the fixed bars.
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(pass).toBeEnabled();
+  await expectFullyInViewport(...actions);
+  await expectFixedCoverageAtMost(page, 0.3, 'landscape table on my turn');
+  await page.setViewportSize({ width: 375, height: 667 });
+
+  // Once I pass it is someone else's turn: only the status bar stays fixed.
+  await pass.click();
+  await expect(pass).toBeDisabled();
+  await expect(page.getByTestId('action-panel')).not.toHaveClass(/\bpinned\b/);
+  const { elements } = await measureFixedCoverage(page);
+  expect(
+    elements.filter((e) => !e.label.includes('status-bar')).map((e) => e.label),
+    'fixed elements off my turn',
+  ).toEqual([]);
+});
+
+test('Buy opens a bottom sheet with the trade confirmation, and Cancel returns to the table', async ({ page }) => {
+  await startSoloTrading(page);
+  const buy = page.getByTestId('buy');
+  await expect(buy).toBeEnabled({ timeout: 30_000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await buy.click();
+
+  const sheet = page.getByTestId('action-sheet');
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByTestId('trade-preview')).toBeVisible();
+  const confirm = sheet.getByTestId('confirm-trade');
+  const cancel = sheet.getByTestId('cancel-action');
+  await expect(cancel).toHaveText('Cancel');
+  await expectFullyInViewport(confirm, cancel);
+  await expectUncovered(confirm);
+  await expectNoHorizontalOverflow(page, 'trade sheet');
+
+  await cancel.click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId('action-panel')).toHaveClass(/\bpinned\b/);
+  await expectFullyInViewport(buy, page.getByTestId('pass'));
+  await expectUncovered(buy);
+});
+
 /** A price input brings up a numeric keypad and has text large enough that iOS doesn't zoom on focus. */
 async function expectPhonePriceInput(input: Locator): Promise<void> {
   await expect(input).toHaveAttribute('inputmode', 'numeric');
@@ -269,4 +345,26 @@ async function expectDirectlyAbove(upper: Locator, lower: Locator): Promise<void
   expect(gap, 'gap between the message and the control below it').toBeGreaterThanOrEqual(0);
   expect(gap, 'gap between the message and the control below it').toBeLessThanOrEqual(16);
   expect(Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x), 'horizontal overlap').toBeGreaterThan(0);
+}
+
+/**
+ * Nothing is drawn over `loc`: at its centre and near each corner, the topmost element is `loc` or inside it.
+ * (toBeInViewport ignores overlap, so a pinned bar on top of an element would still pass it.)
+ */
+async function expectUncovered(loc: Locator): Promise<void> {
+  const covering = await loc.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    // Probes sit a little in from the corners: hit-testing skips the corners that a border radius cuts off.
+    const at = (fx: number, fy: number) => [r.left + r.width * fx, r.top + r.height * fy];
+    const points = [at(0.5, 0.5), at(0.2, 0.2), at(0.8, 0.2), at(0.2, 0.8), at(0.8, 0.8)];
+    for (const [x, y] of points) {
+      const top = document.elementFromPoint(x, y) as HTMLElement | null;
+      if (!top || !(el === top || el.contains(top))) {
+        const id = top?.dataset.testid ? `[data-testid=${top.dataset.testid}]` : '';
+        return `${top?.tagName.toLowerCase() ?? 'nothing'}${id}.${top?.className ?? ''} at ${Math.round(x)},${Math.round(y)}`;
+      }
+    }
+    return null;
+  });
+  expect(covering, `something covers ${loc}`).toBeNull();
 }

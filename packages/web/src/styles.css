@@ -982,9 +982,8 @@ table.data th.num {
   }
 }
 
-/* Phone: the table is one column (see 900px above). While it is the player's turn, the action
-   panel sticks to the bottom of the screen, clear of the safe-area inset; otherwise it sits in
-   the flow so it never covers the table for long. Controls grow to comfortable tap sizes. */
+/* Phone: the table is one column (see 900px above), with a sticky status bar. Controls grow to
+   comfortable tap sizes. The phone action bar and sheet are in the phone table section below. */
 @media (max-width: 700px) {
   /* The table header becomes a slim status bar that stays at the top while the table scrolls. */
   .table-head {
@@ -1040,36 +1039,6 @@ table.data th.num {
   .table-head .countdown .bar {
     width: 56px;
     margin-left: auto;
-  }
-
-  .action-panel.pinned {
-    position: sticky;
-    bottom: 0;
-    z-index: 20;
-    background: var(--panel-solid);
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
-    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    gap: 8px;
-  }
-
-  .action-panel .best-levels {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .action-panel .best {
-    padding: 6px 8px;
-  }
-
-  .action-panel .best .price {
-    font-size: 1.3rem;
-  }
-
-  .action-panel.pinned h2 {
-    margin-bottom: 0;
-  }
-
-  .action-panel.pinned .best .muted {
-    display: none;
   }
 
   .actions {
@@ -1397,6 +1366,70 @@ table.data th.num {
 
 .phone-stats .stat .value {
   font-size: 1rem;
+}
+
+/* The action bar: one row of Buy, Sell, Counter-offer and Pass. On the player's turn it sticks to the
+   bottom of the screen, clear of the safe-area inset; otherwise it sits in the flow, so nothing is pinned. */
+.action-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.action-bar.pinned {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin: 0 -10px -10px;
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel-solid);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.action-bar-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.action-bar-buttons .btn {
+  padding: 4px;
+  font-size: 0.85rem;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.action-bar-buttons .action-price {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.action-bar .error {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+/* The bottom sheet for the chosen action: the trade confirmation or the counter-offer form. */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.sheet {
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel-solid);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--shadow);
 }
 
 /* ---------- coaching & tutorial ---------- */
