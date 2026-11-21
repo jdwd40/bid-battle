@@ -1151,14 +1151,25 @@ table.data th.num {
   min-width: 80px;
 }
 
-.tutorial {
+/* The header and the Back/Next/Done row stay put; only the step's content scrolls, so the buttons are in view at any height. */
+.modal.tutorial {
   max-width: 620px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.tutorial-body {
+.tutorial > * {
+  flex-shrink: 0;
+}
+
+.tutorial > .tutorial-body {
+  flex: 0 1 auto;
+  min-height: min(220px, 40vh);
+  overflow-y: auto;
   font-size: 1rem;
   line-height: 1.55;
-  min-height: 220px;
 }
 
 .tutorial-body p,
