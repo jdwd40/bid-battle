@@ -113,7 +113,7 @@ export class Room {
   }
 
   setSeat(token: string, seat: number, difficulty: Difficulty): CommandResult {
-    if (token !== this.hostToken) return { ok: false, error: 'only the host can change AI settings' };
+    if (token !== this.hostToken) return { ok: false, error: 'only the host can change bot settings' };
     if (this.started) return { ok: false, error: 'the match has already started' };
     if (!Number.isInteger(seat) || seat < 0 || seat >= MAX_SEATS) return { ok: false, error: 'invalid seat' };
     if (!['easy', 'normal', 'hard'].includes(difficulty)) return { ok: false, error: 'invalid difficulty' };
@@ -153,7 +153,7 @@ export class Room {
       this.changed();
       return;
     }
-    // AI takeover happens at the next decision boundary via scheduling.
+    // Takeover by a bot happens at the next decision boundary via scheduling.
     this.afterStateChange();
   }
 
@@ -162,7 +162,7 @@ export class Room {
     if (!p) return null;
     p.connected = true;
     p.disconnectedAt = null;
-    // Safe boundary: cancel any not-yet-fired AI action for this seat so the human reclaims control.
+    // Safe boundary: cancel any not-yet-fired bot action for this seat so the human reclaims control.
     const t = this.botTimers.get(p.seat);
     if (t !== undefined) {
       this.clock.clearTimeout(t);
@@ -173,7 +173,7 @@ export class Room {
     return p;
   }
 
-  isAiControlled(seat: number): boolean {
+  isBotControlled(seat: number): boolean {
     const s = this.seats[seat];
     if (s.kind !== 'human') return true;
     const p = this.players.get(s.token!);
@@ -250,16 +250,16 @@ export class Room {
     const awaiting = new Set(engine.awaitingSeats());
     // Drop timers for seats no longer awaited.
     for (const [seat, handle] of [...this.botTimers]) {
-      if (!awaiting.has(seat) || !this.isAiControlled(seat)) {
+      if (!awaiting.has(seat) || !this.isBotControlled(seat)) {
         this.clock.clearTimeout(handle);
         this.botTimers.delete(seat);
       }
     }
     for (const seat of awaiting) {
-      if (!this.isAiControlled(seat) || this.botTimers.has(seat)) continue;
+      if (!this.isBotControlled(seat) || this.botTimers.has(seat)) continue;
       const handle = this.clock.setTimeout(() => {
         this.botTimers.delete(seat);
-        if (!this.isAiControlled(seat) || !engine.awaitingSeats().includes(seat)) return;
+        if (!this.isBotControlled(seat) || !engine.awaitingSeats().includes(seat)) return;
         const bot = this.seats[seat].kind === 'human' ? this.takeoverBot : this.bots[seat];
         const res = botAct(engine, seat, bot, this.rng, this.clock.now());
         this.audit({ type: 'BOT_ACTION', seat, phase: engine.phase, result: res });
@@ -304,7 +304,7 @@ export class Room {
       room: this.lobbyView(),
       seat: p.seat,
       isHost: token === this.hostToken,
-      aiControlled: this.seats.map((_, i) => this.isAiControlled(i)),
+      botControlled: this.seats.map((_, i) => this.isBotControlled(i)),
       connected: this.seats.map((s) => (s.token ? Boolean(this.players.get(s.token)?.connected) : true)),
       game: this.engine ? projectView(this.engine.state, p.seat, this.clock.now()) : null,
     };

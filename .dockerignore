@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.claude
+.env
+.env.*
+!.env.example
+e2e
+playwright-report
+test-results
+Dockerfile
+.dockerignore
+fly.toml

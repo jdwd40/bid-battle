@@ -62,11 +62,11 @@ export interface Cancellation {
     reason: string;
 }
 /**
- * Deterministically trim a quote until every fill subset is valid for the portfolio.
+ * Risk cancellation: deterministically remove quote sides until every fill subset is valid for the portfolio.
  * Cancels the side that adds exposure in the direction of the current position first;
  * when flat, cancels the side with the larger stand-alone worst-case loss (ask on ties).
  */
-export declare function trimQuote(p: Portfolio, quote: QuoteSides, bounds: Bounds, positionLimit: number): {
+export declare function applyRiskCancellation(p: Portfolio, quote: QuoteSides, bounds: Bounds, positionLimit: number): {
     quote: QuoteSides;
     cancellations: Cancellation[];
 };

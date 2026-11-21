@@ -1,8 +1,8 @@
 import { type PlayerView } from '@bid-battle/engine';
-/** A rough fair-value guess for the local player: own card + average of the unknown dealt cards. */
-export declare function roughGuess(game: PlayerView): number | null;
-export declare function guessLine(game: PlayerView): string;
-/** Suggested starter quote: a little below and above the rough guess. */
+/** The local trader's fair estimate: own card + average of the unknown dealt cards. */
+export declare function myFairEstimate(game: PlayerView): number | null;
+export declare function fairEstimateLine(game: PlayerView): string;
+/** Suggested starter quote: a little below and above the fair estimate. */
 export declare function suggestedQuote(game: PlayerView): {
     bid: number;
     ask: number;

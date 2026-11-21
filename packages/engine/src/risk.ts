@@ -134,7 +134,7 @@ export function validateQuotePrices(quote: QuoteSides, bounds: Bounds): string |
     const v = quote[side];
     if (v === undefined) continue;
     if (!Number.isInteger(v)) return `${side} must be a whole number`;
-    if (v < bounds.L || v > bounds.U) return `${side} ${v} is outside the possible range ${bounds.L} to ${bounds.U}`;
+    if (v < bounds.L || v > bounds.U) return `${side} ${v} is outside the public range ${bounds.L} to ${bounds.U}`;
   }
   if (quote.bid !== undefined && quote.ask !== undefined && quote.bid >= quote.ask) {
     return `bid (${quote.bid}) must be strictly below ask (${quote.ask})`;
@@ -149,11 +149,11 @@ export interface Cancellation {
 }
 
 /**
- * Deterministically trim a quote until every fill subset is valid for the portfolio.
+ * Risk cancellation: deterministically remove quote sides until every fill subset is valid for the portfolio.
  * Cancels the side that adds exposure in the direction of the current position first;
  * when flat, cancels the side with the larger stand-alone worst-case loss (ask on ties).
  */
-export function trimQuote(p: Portfolio, quote: QuoteSides, bounds: Bounds, positionLimit: number): { quote: QuoteSides; cancellations: Cancellation[] } {
+export function applyRiskCancellation(p: Portfolio, quote: QuoteSides, bounds: Bounds, positionLimit: number): { quote: QuoteSides; cancellations: Cancellation[] } {
   const q: QuoteSides = { ...quote };
   const cancellations: Cancellation[] = [];
   for (let guard = 0; guard < 3; guard++) {

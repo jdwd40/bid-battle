@@ -4,7 +4,7 @@ import {
   applySell,
   checkPortfolio,
   evaluateQuote,
-  trimQuote,
+  applyRiskCancellation,
   validateQuotePrices,
   type Command,
   type CommandResult,
@@ -15,7 +15,7 @@ import {
 } from '@bid-battle/engine';
 import type { ClientView } from '../../../server/src/protocol';
 import { difficultyLabel, fmt, fmtPosition, fmtSigned, phaseLabel } from '../format';
-import { coachTip, guessLine, roughGuess, suggestedQuote } from '../coach';
+import { coachTip, fairEstimateLine, myFairEstimate, suggestedQuote } from '../coach';
 import { ActivityFeed } from './ActivityFeed';
 import { Card } from './Card';
 import { Countdown } from './Countdown';
@@ -38,7 +38,7 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
   const prep = game.phase === 'QUOTE_PREPARATION';
   const pending = game.pendingCounter;
 
-  const timerLabel = prep ? 'Lock in your quote' : pending ? 'Counter-offer response' : game.turnSeat === me ? 'Your turn' : `${game.seats[game.turnSeat ?? 0]?.name ?? ''}'s turn`;
+  const timerLabel = prep ? 'Confirm your quote' : pending ? 'Counter-offer response' : game.turnSeat === me ? 'Your turn' : `${game.seats[game.turnSeat ?? 0]?.name ?? ''}'s turn`;
   const timerTotal = prep ? TIMER_TOTALS.QUOTE_PREPARATION : pending ? TIMER_TOTALS.COUNTER : TIMER_TOTALS.TURN;
 
   return (
@@ -55,7 +55,7 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
             {phaseLabel(game.phase)}
           </span>
           <span className="muted small">
-            Possible value {fmt(game.bounds.L)} to {fmt(game.bounds.U)}
+            Public range {fmt(game.bounds.L)} to {fmt(game.bounds.U)}
           </span>
         </div>
         <Countdown deadline={game.deadline} offset={offset} totalMs={timerTotal} label={timerLabel} />
@@ -146,7 +146,7 @@ function Stat({ label, value, testId }: { label: string; value: string; testId?:
 
 function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView; view: ClientView; isMe: boolean }) {
   const active = game.phase === 'TRADING' && game.turnSeat === seat.index;
-  const aiControlled = view.aiControlled[seat.index] && !seat.isBot;
+  const takenOver = view.botControlled[seat.index] && !seat.isBot;
   const trading = game.phase === 'TRADING';
   return (
     <div className={`seat ${active ? 'active' : ''} ${isMe ? 'me' : ''}`} data-testid={`seat-${seat.index}`} aria-current={active ? 'true' : undefined}>
@@ -161,10 +161,10 @@ function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView
         </span>
       </div>
       <div className="seat-status">
-        {seat.isBot ? <span className="pill ai">AI · {difficultyLabel(seat.difficulty)}</span> : <span className="pill human">Human</span>}
-        {aiControlled && <span className="pill warn" data-testid="takeover">AI playing (disconnected)</span>}
+        {seat.isBot ? <span className="pill ai">Bot · {difficultyLabel(seat.difficulty)}</span> : <span className="pill human">Player</span>}
+        {takenOver && <span className="pill warn" data-testid={`takeover-${seat.index}`}>Takeover: bot playing until they reconnect</span>}
         <span className="pill">{fmtPosition(seat.position)}</span>
-        {game.phase === 'QUOTE_PREPARATION' && <span className="pill">{seat.submissionConfirmed ? 'Quote locked' : 'Preparing…'}</span>}
+        {game.phase === 'QUOTE_PREPARATION' && <span className="pill">{seat.sealedQuoteConfirmed ? 'Quote confirmed' : 'Preparing…'}</span>}
         {trading && seat.hasActedThisCycle && !active && <span className="pill">Acted</span>}
       </div>
       {trading && (
@@ -187,13 +187,13 @@ function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView
 
 function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['onCommand'] }) {
   const local = game.me!;
-  const sub = local.submission;
+  const sealed = local.sealedQuote;
   const suggestion = suggestedQuote(game);
-  const hasDraft = Boolean(sub && (sub.bid !== undefined || sub.ask !== undefined));
-  const [useBid, setUseBid] = useState(hasDraft ? sub!.bid !== undefined : true);
-  const [useAsk, setUseAsk] = useState(hasDraft ? sub!.ask !== undefined : true);
-  const [bid, setBid] = useState<string>(hasDraft && sub!.bid !== undefined ? String(sub!.bid) : suggestion ? String(suggestion.bid) : '');
-  const [ask, setAsk] = useState<string>(hasDraft && sub!.ask !== undefined ? String(sub!.ask) : suggestion ? String(suggestion.ask) : '');
+  const hasDraft = Boolean(sealed && (sealed.bid !== undefined || sealed.ask !== undefined));
+  const [useBid, setUseBid] = useState(hasDraft ? sealed!.bid !== undefined : true);
+  const [useAsk, setUseAsk] = useState(hasDraft ? sealed!.ask !== undefined : true);
+  const [bid, setBid] = useState<string>(hasDraft && sealed!.bid !== undefined ? String(sealed!.bid) : suggestion ? String(suggestion.bid) : '');
+  const [ask, setAsk] = useState<string>(hasDraft && sealed!.ask !== undefined ? String(sealed!.ask) : suggestion ? String(suggestion.ask) : '');
   const [busy, setBusy] = useState(false);
 
   // Reset the form with fresh suggestions when a new cycle begins.
@@ -217,37 +217,37 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
   const priceError = incomplete ? 'enter a whole-number price for each side you are posting' : validateQuotePrices(quote, game.bounds);
   const ev = priceError ? null : evaluateQuote(local.portfolio, quote, game.bounds, game.positionLimit);
   const problem = priceError ?? (ev && !ev.ok ? `not affordable ${ev.reason}` : null);
-  const confirmed = Boolean(sub?.confirmed);
+  const confirmed = Boolean(sealed?.confirmed);
   const posting = useBid || useAsk;
-  const guess = roughGuess(game);
+  const estimate = myFairEstimate(game);
 
-  const lock = async (skip = false) => {
+  const confirmQuote = async (skip = false) => {
     setBusy(true);
-    await onCommand(skip ? { type: 'SUBMIT_QUOTE', confirm: true } : { type: 'SUBMIT_QUOTE', ...quote, confirm: true });
+    await onCommand(skip ? { type: 'SEAL_QUOTE', confirm: true } : { type: 'SEAL_QUOTE', ...quote, confirm: true });
     setBusy(false);
   };
   const step = (setter: (v: string) => void, current: string, delta: number) => {
-    const n = current.trim() === '' ? (guess !== null ? Math.round(guess) : 0) : Number(current);
+    const n = current.trim() === '' ? (estimate !== null ? Math.round(estimate) : 0) : Number(current);
     setter(String(Math.max(game.bounds.L, Math.min(game.bounds.U, n + delta))));
   };
 
   if (confirmed) {
     return (
       <div className="panel stack" data-testid="quote-panel">
-        <h2>Your sealed quote is locked</h2>
+        <h2>Your sealed quote is confirmed</h2>
         <div className="best-levels">
           <div className="best bid">
             <div className="label">Bid — I buy at</div>
-            <div className="price">{sub?.bid === undefined ? '—' : fmt(sub.bid)}</div>
+            <div className="price">{sealed?.bid === undefined ? '—' : fmt(sealed.bid)}</div>
           </div>
           <div className="best ask">
             <div className="label">Ask — I sell at</div>
-            <div className="price">{sub?.ask === undefined ? '—' : fmt(sub.ask)}</div>
+            <div className="price">{sealed?.ask === undefined ? '—' : fmt(sealed.ask)}</div>
           </div>
         </div>
         <div className="hint">
-          {sub?.bid === undefined && sub?.ask === undefined ? 'You are posting no prices this cycle. ' : ''}
-          Reserved risk {local.reserved} · available {local.available}. Everyone's prices are revealed together once all traders have locked in or the timer ends.
+          {sealed?.bid === undefined && sealed?.ask === undefined ? 'You are posting no prices this cycle. ' : ''}
+          Reserved risk {local.reserved} · available {local.available}. Everyone's prices are revealed together once all traders have confirmed or the timer ends.
         </div>
       </div>
     );
@@ -258,7 +258,7 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
       <h2>Set your two prices</h2>
       <div className="hint">
         <strong>Bid</strong> = the price you would <strong>pay to buy</strong> one contract. <strong>Ask</strong> = the price you would{' '}
-        <strong>sell</strong> one for. Keep your bid below your guess and your ask above it. {guess !== null && guessLine(game)}
+        <strong>sell</strong> one for. Keep your bid below your fair estimate and your ask above it. {estimate !== null && fairEstimateLine(game)}
       </div>
       <div className="quote-form">
         <div className="side bid">
@@ -322,8 +322,8 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
         </div>
       )}
       <div className="row">
-        <button className="btn btn-primary" disabled={busy || (posting && Boolean(problem))} onClick={() => lock(false)} data-testid="lock-quote">
-          {posting ? 'Lock in my prices' : 'Lock in: no prices'}
+        <button className="btn btn-primary" disabled={busy || (posting && Boolean(problem))} onClick={() => confirmQuote(false)} data-testid="confirm-quote">
+          {posting ? 'Confirm my prices' : 'Confirm: no prices'}
         </button>
         {suggestion && (
           <button
@@ -339,11 +339,11 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
             Use suggested ({fmt(suggestion.bid)} / {fmt(suggestion.ask)})
           </button>
         )}
-        <button className="btn" disabled={busy} onClick={() => lock(true)} data-testid="skip-quote">
+        <button className="btn" disabled={busy} onClick={() => confirmQuote(true)} data-testid="skip-quote">
           Skip this cycle
         </button>
         <span className="muted small">
-          {game.seats.filter((s) => s.submissionConfirmed).length}/{game.seats.length} traders locked in
+          {game.seats.filter((s) => s.sealedQuoteConfirmed).length}/{game.seats.length} traders confirmed
         </span>
       </div>
     </div>
@@ -387,9 +387,9 @@ function ActionPanel({ game, onCommand }: { game: PlayerView; onCommand: Props['
   const preview = (side: 'buy' | 'sell', price: number) => {
     const p = side === 'buy' ? applyBuy(local.portfolio, price) : applySell(local.portfolio, price);
     const check = checkPortfolio(p, game.bounds, game.positionLimit);
-    const trimmed = trimQuote(p, myQuote, game.bounds, game.positionLimit);
-    const ev = evaluateQuote(p, trimmed.quote, game.bounds, game.positionLimit);
-    return { ok: check.ok, reason: check.reason, portfolio: p, reserved: ev.reserved, cancellations: trimmed.cancellations };
+    const afterCancellation = applyRiskCancellation(p, myQuote, game.bounds, game.positionLimit);
+    const ev = evaluateQuote(p, afterCancellation.quote, game.bounds, game.positionLimit);
+    return { ok: check.ok, reason: check.reason, portfolio: p, reserved: ev.reserved, cancellations: afterCancellation.cancellations };
   };
 
   const buyReason = !isMyTurn ? waitingOn ?? 'Not your turn' : !levels.bestAsk ? 'No one is offering to sell right now' : preview('buy', levels.bestAsk.price).ok ? null : `You cannot buy: ${preview('buy', levels.bestAsk.price).reason}`;
@@ -541,7 +541,7 @@ function PreviewBox({ label, preview }: { label: string; preview: Preview }) {
         <ul>
           {preview.cancellations.map((c, i) => (
             <li key={i}>
-              Your {c.side} at {fmt(c.price)} would be cancelled automatically ({c.reason}).
+              Your {c.side} at {fmt(c.price)} would be removed by risk cancellation ({c.reason}).
             </li>
           ))}
         </ul>
@@ -581,8 +581,8 @@ function CounterModal({ game, offset, onCommand }: { game: PlayerView; offset: n
   const check = checkPortfolio(p, game.bounds, game.positionLimit);
   const rest: QuoteSides = { ...game.seats[game.seat!].quote };
   delete rest[pc.side];
-  const trimmed = trimQuote(p, rest, game.bounds, game.positionLimit);
-  const ev = evaluateQuote(p, trimmed.quote, game.bounds, game.positionLimit);
+  const afterCancellation = applyRiskCancellation(p, rest, game.bounds, game.positionLimit);
+  const ev = evaluateQuote(p, afterCancellation.quote, game.bounds, game.positionLimit);
   const respond = async (accept: boolean) => {
     setBusy(true);
     await onCommand({ type: 'RESPOND_COUNTER', counterId: pc.id, accept });
@@ -603,7 +603,7 @@ function CounterModal({ game, offset, onCommand }: { game: PlayerView; offset: n
             </>
           )}
         </p>
-        <PreviewBox label="If you accept" preview={{ ok: check.ok, reason: check.reason, portfolio: p, reserved: ev.reserved, cancellations: trimmed.cancellations }} />
+        <PreviewBox label="If you accept" preview={{ ok: check.ok, reason: check.reason, portfolio: p, reserved: ev.reserved, cancellations: afterCancellation.cancellations }} />
         {!check.ok && <div className="hint">You cannot accept: {check.reason}.</div>}
         <Countdown deadline={game.deadline} offset={offset} totalMs={TIMER_TOTALS.COUNTER} label="Respond within" />
         <div className="row">

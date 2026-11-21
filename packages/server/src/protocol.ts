@@ -25,8 +25,8 @@ export interface ClientView {
   room: LobbyView;
   seat: number;
   isHost: boolean;
-  /** Seats currently driven by the AI because the human is disconnected. */
-  aiControlled: boolean[];
+  /** Seats currently played by a bot: bot seats, plus player seats under takeover while disconnected. */
+  botControlled: boolean[];
   connected: boolean[];
   game: PlayerView | null;
 }

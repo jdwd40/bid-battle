@@ -40,3 +40,6 @@ server.listen(port).then((p) => {
   console.log(`Bid Battle server listening on http://localhost:${p}` + (existsSync(staticDir) ? ` (serving ${staticDir})` : ''));
   console.log('Rooms are in memory only: restarting the server clears all active matches.');
 });
+
+// Host stop signal (Fly sends SIGTERM on deploy): warn every room, then exit.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => void server.shutdown().then(() => process.exit(0)));

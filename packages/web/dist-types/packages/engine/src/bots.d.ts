@@ -4,10 +4,10 @@ import { type QuoteSides } from './risk.js';
 import type { Command } from './types.js';
 import type { BotObservation } from './view.js';
 /**
- * Conditional expected settlement total given the cards a trader can see:
+ * Fair estimate: the expected settlement value given the cards a trader can see:
  * sum(known) + unknownDealt * mean(deck excluding known).
  */
-export declare function expectedTotal(ownCard: number, publicCards: readonly number[]): number;
+export declare function fairEstimate(ownCard: number, publicCards: readonly number[]): number;
 export interface Bot {
     readonly difficulty: Difficulty;
     decideQuote(obs: BotObservation, rng: Rng): QuoteSides;

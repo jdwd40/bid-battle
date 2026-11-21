@@ -51,7 +51,7 @@ export function JoinScreen({ busy, error, onCreate, onJoin, onHowToPlay }: Props
         <h1>
           Bid <span>Battle</span>
         </h1>
-        <p>Four traders. Seven hidden cards. Guess the total, set your prices, trade, and settle when the cards flip.</p>
+        <p>Four traders. Seven hidden cards. Estimate the settlement value, set your prices, trade, and settle when the cards flip.</p>
         <p>
           <button className="btn btn-sm" onClick={onHowToPlay} data-testid="how-to-play-intro">
             New here? Read how to play (2 minutes)
@@ -81,7 +81,7 @@ export function JoinScreen({ busy, error, onCreate, onJoin, onHowToPlay }: Props
           <button className="btn btn-primary" disabled={busy || !name.trim()} data-testid="create-room">
             Create a private table
           </button>
-          <div className="muted small">Play solo against three AI traders, or share the room code with friends.</div>
+          <div className="muted small">Play solo against three bots, or share the room code with friends.</div>
         </form>
         <div className="divider">or join a table</div>
         <form onSubmit={join} className="row">

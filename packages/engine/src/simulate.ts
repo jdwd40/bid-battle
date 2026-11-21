@@ -11,8 +11,8 @@ export function botAct(engine: GameEngine, seat: number, bot: Bot, rng: Rng, now
   switch (obs.phase) {
     case 'QUOTE_PREPARATION': {
       const q = bot.decideQuote(obs, rng);
-      const res = engine.apply(seat, { type: 'SUBMIT_QUOTE', ...q, confirm: true }, now);
-      return res.ok ? res : engine.apply(seat, { type: 'SUBMIT_QUOTE', confirm: true }, now);
+      const res = engine.apply(seat, { type: 'SEAL_QUOTE', ...q, confirm: true }, now);
+      return res.ok ? res : engine.apply(seat, { type: 'SEAL_QUOTE', confirm: true }, now);
     }
     case 'TRADING': {
       if (obs.pendingCounterForMe) {
@@ -35,7 +35,7 @@ export interface SimulationResult {
 }
 
 /**
- * Run a complete all-AI match deterministically (no timers needed: every seat
+ * Run a complete all-bot match deterministically (no timers needed: every seat
  * acts immediately when the engine waits on it).
  */
 export function simulateMatch(seed: number, difficulties: Difficulty[] = ['easy', 'normal', 'hard', 'normal'], config?: Partial<MatchConfig>): SimulationResult {

@@ -37,7 +37,7 @@ export declare class GameEngine {
     /** Apply any deadline that has passed. Returns true if state changed. */
     tick(now: number): boolean;
     apply(seat: number, cmd: Command, now: number): CommandResult;
-    private submitQuote;
+    private sealQuote;
     private requireTurn;
     /** BUY takes an ask; SELL takes a bid. */
     private takeQuote;
@@ -48,7 +48,7 @@ export declare class GameEngine {
     private checkExecution;
     private executeTrade;
     /** Cancel quote sides that became unsafe after a position change, logging each cancellation. */
-    private trimQuotes;
+    private applyRiskCancellations;
     private log;
 }
 //# sourceMappingURL=engine.d.ts.map

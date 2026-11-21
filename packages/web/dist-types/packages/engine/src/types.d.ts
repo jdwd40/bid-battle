@@ -35,7 +35,7 @@ export interface SeatTradeRecord {
     via: 'quote' | 'counter';
     context: TradeContext;
 }
-export interface QuoteSubmission {
+export interface SealedQuote {
     bid?: number;
     ask?: number;
     confirmed: boolean;
@@ -53,8 +53,8 @@ export interface SeatState {
     position: number;
     /** Cashflow offset C. */
     cashflow: number;
-    /** Sealed submission during QUOTE_PREPARATION. */
-    submission: QuoteSubmission | null;
+    /** Sealed quote during QUOTE_PREPARATION. */
+    sealedQuote: SealedQuote | null;
     /** Published quote during TRADING (sides disappear when filled/cancelled). */
     quote: QuoteSides;
     trades: SeatTradeRecord[];
@@ -182,7 +182,7 @@ export interface MatchState {
     winners: number[] | null;
 }
 export type Command = {
-    type: 'SUBMIT_QUOTE';
+    type: 'SEAL_QUOTE';
     bid?: number;
     ask?: number;
     confirm: boolean;
