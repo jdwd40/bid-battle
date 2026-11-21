@@ -22,5 +22,14 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120_000,
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /phone\.spec\.ts$/ },
+    {
+      // A phone-sized Chromium (iPhone 12-class width). Phone layout specs go in phone.spec.ts and
+      // use the helpers in e2e/support/layout.ts.
+      name: 'phone',
+      use: { ...devices['Pixel 5'], viewport: { width: 390, height: 844 } },
+      testMatch: /phone\.spec\.ts$/,
+    },
+  ],
 });
