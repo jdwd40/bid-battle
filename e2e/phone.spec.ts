@@ -304,11 +304,9 @@ test('in round 1 the coach is open below the play area, and activity and help op
   await expectNoHorizontalOverflow(page, 'table with the coach reopened');
 });
 
-test('from round 2 the coach shows only its title until I tap it', async ({ page }, testInfo) => {
-  // This project's server plays one-round matches; the chromium project's server, one port below, plays full matches.
-  const fullMatch = new URL(testInfo.project.use.baseURL!);
-  fullMatch.port = String(Number(fullMatch.port) - 1);
-  await page.goto(fullMatch.href);
+test('from round 2 the coach shows only its title until I tap it', async ({ page }) => {
+  // This project's server plays one-round matches, so this test plays on the full-match server (see playwright.config.ts).
+  await page.goto(process.env.E2E_FULL_MATCH_URL!);
   await page.getByTestId('name-input').fill('Pocket');
   await page.getByTestId('create-room').click();
   await page.getByTestId('start-match').click();

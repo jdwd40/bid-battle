@@ -135,7 +135,7 @@ test('two browsers create/join a room, post quotes, trade, settle and agree', as
   const balances = await ada.getByTestId('results-table').locator('tbody tr td:last-child').allTextContents();
   expect(balances.map(Number).reduce((x, y) => x + y, 0)).toBe(400);
   await expect(ada.locator('[data-testid="reveal-row"] [data-testid="card"]')).toHaveCount(7);
-  await expect(bo.getByText('Bought from')).toBeVisible();
+  await expect(bo.getByText('Bought from').first()).toBeVisible(); // Bo may also have bought from bots
 
   // Ready up: match moves on to round 2.
   await ada.getByTestId('ready').click();
