@@ -1,8 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 3101;
+// E2E_PORT moves both servers (PORT and PORT + 1), so test runs in separate worktrees don't collide.
+const PORT = Number(process.env.E2E_PORT ?? 3101);
 // The phone project gets its own server with one-round matches, so its solo match reaches the match results quickly.
-const PHONE_PORT = 3102;
+const PHONE_PORT = PORT + 1;
 const SERVER_ENV = 'BOT_DELAY_MS=100 TURN_MS=8000 COUNTER_MS=4000 REVIEW_MS=20000 ROOMS_PER_IP=1000 STATIC_DIR=packages/web/dist';
 
 export default defineConfig({
@@ -37,10 +38,10 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /phone\.spec\.ts$/ },
     {
-      // A phone-sized Chromium (iPhone 12-class width). Phone layout specs go in phone.spec.ts and
+      // A phone-sized Chromium at iPhone SE size (375×667); set the viewport per test where it differs. Phone layout specs go in phone.spec.ts and
       // use the helpers in e2e/support/layout.ts. Its server plays one-round matches.
       name: 'phone',
-      use: { ...devices['Pixel 5'], viewport: { width: 390, height: 844 }, baseURL: `http://127.0.0.1:${PHONE_PORT}` },
+      use: { ...devices['Pixel 5'], viewport: { width: 375, height: 667 }, baseURL: `http://127.0.0.1:${PHONE_PORT}` },
       testMatch: /phone\.spec\.ts$/,
     },
   ],

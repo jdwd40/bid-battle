@@ -464,6 +464,11 @@ label.field {
   font-size: 1.1rem;
 }
 
+/* The fair estimate is shown in the phone status bar only; desktop keeps it in the coach text. */
+.table-head .fair-estimate {
+  display: none;
+}
+
 .countdown {
   min-width: 120px;
   text-align: right;
@@ -981,6 +986,62 @@ table.data th.num {
    panel sticks to the bottom of the screen, clear of the safe-area inset; otherwise it sits in
    the flow so it never covers the table for long. Controls grow to comfortable tap sizes. */
 @media (max-width: 700px) {
+  /* The table header becomes a slim status bar that stays at the top while the table scrolls. */
+  .table-head {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+    margin: -10px -10px 8px;
+    padding: calc(4px + env(safe-area-inset-top, 0px)) 10px 4px;
+    background: var(--panel-solid);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  }
+
+  .table-head .meta {
+    gap: 2px 10px;
+    font-size: 0.8rem;
+    line-height: 1.25;
+  }
+
+  .table-head .meta strong {
+    font-size: 0.85rem;
+  }
+
+  .table-head .meta .pill {
+    padding: 0 6px;
+  }
+
+  .table-head .fair-estimate {
+    display: inline;
+    color: var(--accent);
+  }
+
+  .table-head .fair-estimate strong {
+    color: inherit;
+  }
+
+  .table-head .countdown {
+    min-width: 0;
+    text-align: right;
+  }
+
+  .table-head .countdown .muted {
+    display: none;
+  }
+
+  .table-head .countdown .time {
+    font-size: 1.2rem;
+    line-height: 1.2;
+  }
+
+  .table-head .countdown .bar {
+    width: 56px;
+    margin-left: auto;
+  }
+
   .action-panel.pinned {
     position: sticky;
     bottom: 0;

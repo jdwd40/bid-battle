@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectFullyInViewport, expectNoHorizontalOverflow } from './support/layout';
+import { expectFixedCoverageAtMost, expectFullyInViewport, expectNoHorizontalOverflow } from './support/layout';
 
-// Runs only in the `phone` project (see playwright.config.ts): a ~390px-wide touch viewport, on a
+// Runs only in the `phone` project (see playwright.config.ts): an iPhone SE-sized (375×667) touch viewport, on a
 // server that plays one-round matches so the solo match reaches the match results.
 
 /** Step through every page of the how-to-play tutorial, checking each fits, then close it. */
@@ -115,4 +115,27 @@ test('a solo match on a phone fits the screen and keeps the action buttons in vi
   await ready.click();
   await expect(page.getByTestId('winner-line')).toBeVisible();
   await expectNoHorizontalOverflow(page, 'match results');
+});
+
+test('the status bar keeps the timer and my fair estimate in view while I scroll the table', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('name-input').fill('Pocket');
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('start-match').click();
+  await page.getByTestId('tutorial-close').click();
+  await expect(page.getByTestId('quote-panel')).toBeVisible();
+
+  const statusBar = page.getByTestId('status-bar');
+  const timer = statusBar.getByTestId('countdown');
+  const estimate = statusBar.getByTestId('fair-estimate');
+  await expect(estimate).toHaveText(/^Fair \d+$/);
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expectFullyInViewport(timer, estimate);
+  await expectFixedCoverageAtMost(page, 0.12, 'table at the top');
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  expect(await page.evaluate(() => window.scrollY), 'the table is taller than the screen').toBeGreaterThan(0);
+  await expectFullyInViewport(timer, estimate);
+  await expectFixedCoverageAtMost(page, 0.12, 'table scrolled to the bottom');
 });

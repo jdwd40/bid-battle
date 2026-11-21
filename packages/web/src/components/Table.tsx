@@ -40,10 +40,12 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
 
   const timerLabel = prep ? 'Confirm your quote' : pending ? 'Counter-offer response' : game.turnSeat === me ? 'Your turn' : `${game.seats[game.turnSeat ?? 0]?.name ?? ''}'s turn`;
   const timerTotal = prep ? TIMER_TOTALS.QUOTE_PREPARATION : pending ? TIMER_TOTALS.COUNTER : TIMER_TOTALS.TURN;
+  const estimate = myFairEstimate(game);
 
   return (
     <div className="stack">
-      <div className="table-head">
+      {/* On phones this header is the sticky status bar (see styles.css). */}
+      <div className="table-head" data-testid="status-bar">
         <div className="meta">
           <strong>
             Round {game.round}/{game.totalRounds}
@@ -57,6 +59,11 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
           <span className="muted small">
             Public range {fmt(game.publicRange.L)} to {fmt(game.publicRange.U)}
           </span>
+          {estimate !== null && (
+            <span className="fair-estimate" data-testid="fair-estimate" title="Your fair estimate of the settlement value">
+              Fair <strong>{Math.round(estimate)}</strong>
+            </span>
+          )}
         </div>
         <Countdown deadline={game.deadline} offset={offset} totalMs={timerTotal} label={timerLabel} />
       </div>
