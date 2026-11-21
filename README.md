@@ -35,6 +35,13 @@ Other root commands:
 Environment variables (see `.env.example`): `PORT`, `BOT_DELAY_MS`, `QUOTE_PREP_MS`, `TURN_MS`,
 `COUNTER_MS`, `REVIEW_MS`, `ROUNDS`, `STATIC_DIR`, `AUDIT=1` (prints the private audit trail to stderr).
 
+Abuse limits, also from the environment: `ROOMS_PER_IP` (rooms one IP may create per window, default 5),
+`ROOM_WINDOW_MS` (that window, default 600000 = 10 minutes), `MAX_OPEN_ROOMS` (default 100) and
+`MESSAGES_PER_SECOND` (per connection, default 20). `CLIENT_IP_HEADER` names the trusted header that
+carries the client IP; set it to `Fly-Client-IP` in production. Unset, the socket's remote address is
+used, so do not set it when the server is reachable without the proxy (a client could fake the header).
+A refused room creation, or a message over the rate, is answered with an error; the connection stays open.
+
 **Rooms live in memory only. Restarting the server clears every active match.**
 
 ## Playing from a second browser or device

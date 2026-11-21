@@ -15,6 +15,16 @@ for (const [env, key] of [
 }
 const rounds = process.env.ROUNDS !== undefined ? Number(process.env.ROUNDS) : undefined;
 
+// Abuse limits; unset variables keep the defaults in limits.ts.
+const envNumber = (name: string) => (process.env[name] !== undefined ? Number(process.env[name]) : undefined);
+const limits = {
+  roomsPerIp: envNumber('ROOMS_PER_IP'),
+  roomWindowMs: envNumber('ROOM_WINDOW_MS'),
+  maxOpenRooms: envNumber('MAX_OPEN_ROOMS'),
+  messagesPerSecond: envNumber('MESSAGES_PER_SECOND'),
+  clientIpHeader: process.env.CLIENT_IP_HEADER || undefined,
+};
+
 const staticDir = process.env.STATIC_DIR ?? resolve(process.cwd(), 'packages/web/dist');
 
 const server = createGameServer({
@@ -22,6 +32,7 @@ const server = createGameServer({
   config: { ...(rounds ? { rounds } : {}), ...(Object.keys(timers).length ? { timers: timers as any } : {}) },
   staticDir: existsSync(staticDir) ? staticDir : undefined,
   audit: process.env.AUDIT === '1',
+  limits,
 });
 
 server.listen(port).then((p) => {
