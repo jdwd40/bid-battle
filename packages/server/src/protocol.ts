@@ -1,7 +1,17 @@
 import type { Command, CommandResult, Difficulty, PlayerView } from '@bid-battle/engine';
 
-/** Rejoin error meaning the room or seat is gone for good, so the client should forget its token. Other rejoin errors (e.g. rate limits) are transient. */
-export const SESSION_GONE = 'that session no longer exists';
+/** Machine-readable reasons an ack can fail with, alongside its human-readable `error` text. */
+export type AckErrorCode =
+  /** Rejoin: the room or seat is gone for good, so the client should forget its token. Rejoin failures without it (e.g. rate limits) are transient. */
+  'SESSION_GONE';
+
+export interface AckFailure {
+  ok: false;
+  error: string;
+  code?: AckErrorCode;
+}
+
+export const SESSION_GONE: AckFailure = { ok: false, code: 'SESSION_GONE', error: 'that session no longer exists' };
 
 export type SeatKind = 'open' | 'human' | 'bot';
 
@@ -60,7 +70,7 @@ export interface CommandRequest {
   action: Command;
 }
 
-export type Ack<T> = (res: T | { ok: false; error: string }) => void;
+export type Ack<T> = (res: T | AckFailure) => void;
 
 export interface ClientToServerEvents {
   createRoom: (req: JoinRequest, ack: Ack<JoinResponse>) => void;

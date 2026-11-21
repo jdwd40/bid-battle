@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { Command, CommandResult, Difficulty } from '@bid-battle/engine';
-import { SESSION_GONE, type ClientView, type JoinResponse } from '../../server/src/protocol';
+import type { AckFailure, ClientView, JoinResponse } from '../../server/src/protocol';
 
 /** Reconnect tokens persist across tab closes, one per room, so an invite link can return a player to their seat. */
 const TOKEN_PREFIX = 'bidbattle.token.';
@@ -43,14 +43,15 @@ export class GameClient {
   /** Rejoin the stored seat. Only forget the token when the server says the seat is gone; retry transient errors. */
   private rejoin(attempt = 0) {
     if (!this.token || !this.socket.connected) return;
-    this.socket.emit('rejoin', { token: this.token }, (res: JoinResponse | { ok: false; error: string }) => {
+    this.socket.emit('rejoin', { token: this.token }, (res: JoinResponse | AckFailure) => {
       if (res.ok) return;
-      if (res.error !== SESSION_GONE && attempt < 5) {
+      const gone = res.code === 'SESSION_GONE';
+      if (!gone && attempt < 5) {
         setTimeout(() => this.rejoin(attempt + 1), 1000 * (attempt + 1));
         return;
       }
       this.listeners.onView(null);
-      if (res.error !== SESSION_GONE) {
+      if (!gone) {
         // Still transient after retries: keep the token so reopening the link can try again.
         this.listeners.onKicked(res.error);
         return;

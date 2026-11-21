@@ -179,9 +179,9 @@ export function createGameServer(opts: GameServerOptions = {}) {
     socket.on('rejoin', (req, ack) => {
       const code = typeof req?.token === 'string' ? tokenToRoom.get(req.token) : undefined;
       const room = code ? rooms.get(code) : undefined;
-      if (!room) return ack({ ok: false, error: SESSION_GONE });
+      if (!room) return ack({ ...SESSION_GONE });
       const p = room.reconnect(req.token);
-      if (!p) return ack({ ok: false, error: SESSION_GONE });
+      if (!p) return ack({ ...SESSION_GONE });
       attach(socket, room, req.token);
       ack({ ok: true, code: room.code, token: req.token, seat: p.seat });
       broadcast(room);
