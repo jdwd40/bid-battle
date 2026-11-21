@@ -188,22 +188,26 @@ function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView
 function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['onCommand'] }) {
   const local = game.me!;
   const sealed = local.sealedQuote;
-  const suggestion = suggestedQuote(game);
+  const starter = suggestedQuote(game);
+  const suggestion = starter?.quote ?? null;
   const hasDraft = Boolean(sealed && (sealed.bid !== undefined || sealed.ask !== undefined));
-  const [useBid, setUseBid] = useState(hasDraft ? sealed!.bid !== undefined : true);
-  const [useAsk, setUseAsk] = useState(hasDraft ? sealed!.ask !== undefined : true);
-  const [bid, setBid] = useState<string>(hasDraft && sealed!.bid !== undefined ? String(sealed!.bid) : suggestion ? String(suggestion.bid) : '');
-  const [ask, setAsk] = useState<string>(hasDraft && sealed!.ask !== undefined ? String(sealed!.ask) : suggestion ? String(suggestion.ask) : '');
+  // With no affordable suggestion both sides start on, so the form shows why nothing was filled in.
+  const suggestUse = (side: 'bid' | 'ask') => !suggestion || suggestion[side] !== undefined;
+  const suggestPrice = (side: 'bid' | 'ask') => (suggestion?.[side] !== undefined ? String(suggestion[side]) : '');
+  const [useBid, setUseBid] = useState(hasDraft ? sealed!.bid !== undefined : suggestUse('bid'));
+  const [useAsk, setUseAsk] = useState(hasDraft ? sealed!.ask !== undefined : suggestUse('ask'));
+  const [bid, setBid] = useState<string>(hasDraft && sealed!.bid !== undefined ? String(sealed!.bid) : suggestPrice('bid'));
+  const [ask, setAsk] = useState<string>(hasDraft && sealed!.ask !== undefined ? String(sealed!.ask) : suggestPrice('ask'));
   const [busy, setBusy] = useState(false);
 
   // Reset the form with fresh suggestions when a new cycle begins.
   const cycleKey = `${game.round}-${game.cycle}`;
   useEffect(() => {
     if (!hasDraft) {
-      setUseBid(true);
-      setUseAsk(true);
-      setBid(suggestion ? String(suggestion.bid) : '');
-      setAsk(suggestion ? String(suggestion.ask) : '');
+      setUseBid(suggestUse('bid'));
+      setUseAsk(suggestUse('ask'));
+      setBid(suggestPrice('bid'));
+      setAsk(suggestPrice('ask'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cycleKey]);
@@ -329,15 +333,20 @@ function QuotePanel({ game, onCommand }: { game: PlayerView; onCommand: Props['o
           <button
             className="btn"
             onClick={() => {
-              setUseBid(true);
-              setUseAsk(true);
-              setBid(String(suggestion.bid));
-              setAsk(String(suggestion.ask));
+              setUseBid(suggestUse('bid'));
+              setUseAsk(suggestUse('ask'));
+              if (suggestion.bid !== undefined) setBid(String(suggestion.bid));
+              if (suggestion.ask !== undefined) setAsk(String(suggestion.ask));
             }}
             data-testid="suggest-quote"
           >
-            Use suggested ({fmt(suggestion.bid)} / {fmt(suggestion.ask)})
+            Use suggested ({suggestion.bid === undefined ? '—' : fmt(suggestion.bid)} / {suggestion.ask === undefined ? '—' : fmt(suggestion.ask)})
           </button>
+        )}
+        {starter?.reason && (
+          <span className="muted small" data-testid="no-suggestion">
+            No suggested prices: {starter.reason}
+          </span>
         )}
         <button className="btn" disabled={busy} onClick={() => confirmQuote(true)} data-testid="skip-quote">
           Skip this cycle

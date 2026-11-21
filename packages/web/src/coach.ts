@@ -1,4 +1,4 @@
-import { fairEstimate, type PlayerView } from '@bid-battle/engine';
+import { evaluateQuote, fairEstimate, validateQuotePrices, type PlayerView, type QuoteSides } from '@bid-battle/engine';
 import { fmt } from './format';
 
 /** The local trader's fair estimate: own card + average of the unknown dealt cards. */
@@ -17,12 +17,32 @@ export function fairEstimateLine(game: PlayerView): string {
   return `Your card is ${fmt(card)}${known}. The other ${unknown} hidden cards average about ${((g - card - game.publicCards.reduce((a, b) => a + b, 0)) / unknown).toFixed(1)} each, so your fair estimate of the settlement value is ${Math.round(g)}.`;
 }
 
-/** Suggested starter quote: a little below and above the fair estimate. */
-export function suggestedQuote(game: PlayerView): { bid: number; ask: number } | null {
+/** A starter quote the trader can afford, or the reason there is none. */
+export type StarterQuote = { quote: QuoteSides; reason?: undefined } | { quote: null; reason: string };
+
+/**
+ * Suggested starter quote: a little below and above the fair estimate, checked with the engine's
+ * affordability evaluation (the same one that enables Confirm). A side that is not affordable moves
+ * away from the estimate, which lowers its worst-case loss, but stays strictly inside the public range,
+ * where it could still profit. If only one side fits it is suggested alone; if neither fits there is a reason.
+ * Null when the trader has no fair estimate (no private card yet).
+ */
+export function suggestedQuote(game: PlayerView): StarterQuote | null {
   const g = myFairEstimate(game);
-  if (g === null) return null;
+  const portfolio = game.me?.portfolio;
+  if (g === null || !portfolio) return null;
+  const { L, U } = game.publicRange;
+  const fits = (q: QuoteSides) =>
+    validateQuotePrices(q, game.publicRange) === null && evaluateQuote(portfolio, q, game.publicRange, game.positionLimit).ok;
   const mid = Math.round(g);
-  return { bid: Math.max(game.publicRange.L, mid - 4), ask: Math.min(game.publicRange.U, mid + 4) };
+  let bid: number | undefined;
+  for (let b = Math.min(U - 1, mid - 4); b > L && bid === undefined; b--) if (fits({ bid: b })) bid = b;
+  let ask: number | undefined;
+  for (let a = Math.max(L + 1, mid + 4); a < U && ask === undefined; a++) if (fits({ ask: a })) ask = a;
+  if (bid !== undefined && ask !== undefined && fits({ bid, ask })) return { quote: { bid, ask } };
+  if (bid !== undefined) return { quote: { bid } };
+  if (ask !== undefined) return { quote: { ask } };
+  return { quote: null, reason: 'Your available credits cannot cover the risk of a bid or an ask this cycle.' };
 }
 
 /** Plain-language advice for the current moment at the table. */
