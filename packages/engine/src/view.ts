@@ -1,5 +1,5 @@
 import { evaluateQuote, publicBounds, type Bounds, type Portfolio, type QuoteSides } from './risk.js';
-import type { LoggedEvent, MatchState, PendingCounter, Phase, QuoteSubmission, RoundResult, SeatTradeRecord, Trade } from './types.js';
+import type { LoggedEvent, MatchState, PendingCounter, Phase, SealedQuote, RoundResult, SeatTradeRecord, Trade } from './types.js';
 import type { Difficulty } from './config.js';
 
 export interface SeatView {
@@ -13,14 +13,14 @@ export interface SeatView {
   privateCard: number | null;
   /** Published quote (only populated during TRADING). */
   quote: QuoteSides;
-  /** Whether the seat has confirmed its sealed submission (QUOTE_PREPARATION only). */
-  submissionConfirmed: boolean | null;
+  /** Whether the seat has confirmed its sealed quote (QUOTE_PREPARATION only). */
+  sealedQuoteConfirmed: boolean | null;
   hasActedThisCycle: boolean;
   ready: boolean;
 }
 
 export interface LocalInfo {
-  submission: QuoteSubmission | null;
+  sealedQuote: SealedQuote | null;
   portfolio: Portfolio;
   reserved: number;
   available: number;
@@ -58,7 +58,7 @@ const REVEALED_PHASES: Phase[] = ['SETTLEMENT', 'ROUND_REVIEW', 'MATCH_COMPLETE'
 /**
  * Build the sanitised view for one seat (or an observer when seat is null).
  * Never includes other private cards, hidden community cards, unused cards,
- * or other players' sealed submissions.
+ * or other players' sealed quotes.
  */
 export function projectView(state: MatchState, seat: number | null, now: number, eventLimit = 60): PlayerView {
   const revealedAll = REVEALED_PHASES.includes(state.phase);
@@ -73,7 +73,7 @@ export function projectView(state: MatchState, seat: number | null, now: number,
     position: s.position,
     privateCard: s.index === seat || revealedAll ? s.privateCard : null,
     quote: state.phase === 'TRADING' ? { ...s.quote } : {},
-    submissionConfirmed: state.phase === 'QUOTE_PREPARATION' ? Boolean(s.submission?.confirmed) : null,
+    sealedQuoteConfirmed: state.phase === 'QUOTE_PREPARATION' ? Boolean(s.sealedQuote?.confirmed) : null,
     hasActedThisCycle: s.hasActedThisCycle,
     ready: s.ready,
   }));
@@ -82,13 +82,13 @@ export function projectView(state: MatchState, seat: number | null, now: number,
   if (seat !== null) {
     const s = state.seats[seat];
     const portfolio: Portfolio = { B: s.roundStartBalance, q: s.position, C: s.cashflow };
-    const outstanding: QuoteSides = state.phase === 'QUOTE_PREPARATION' ? { bid: s.submission?.bid, ask: s.submission?.ask } : s.quote;
+    const outstanding: QuoteSides = state.phase === 'QUOTE_PREPARATION' ? { bid: s.sealedQuote?.bid, ask: s.sealedQuote?.ask } : s.quote;
     const clean: QuoteSides = {};
     if (outstanding.bid !== undefined) clean.bid = outstanding.bid;
     if (outstanding.ask !== undefined) clean.ask = outstanding.ask;
     const ev = evaluateQuote(portfolio, clean, bounds, state.config.positionLimit);
     me = {
-      submission: s.submission ? { ...s.submission } : null,
+      sealedQuote: s.sealedQuote ? { ...s.sealedQuote } : null,
       portfolio,
       reserved: ev.reserved,
       available: portfolio.B - ev.reserved,
@@ -137,7 +137,7 @@ export interface OpponentObservation {
 }
 
 /**
- * Structurally restricted input for AI decision making.
+ * Structurally restricted input for bot decision making.
  * Built field-by-field; it is impossible for hidden data to appear here.
  */
 export interface BotObservation {

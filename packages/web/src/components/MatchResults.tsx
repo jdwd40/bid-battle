@@ -43,7 +43,7 @@ export function MatchResults({ game, onLeave }: Props) {
                 {s.name}
                 {s.index === me ? ' (you)' : ''}
               </div>
-              <div className="muted small">{s.isBot ? `${difficultyLabel(s.difficulty)} AI` : 'Human'}</div>
+              <div className="muted small">{s.isBot ? `${difficultyLabel(s.difficulty)} bot` : 'Player'}</div>
               <div className="bal">{s.balance}</div>
               <div className={`small ${s.balance - 100 >= 0 ? 'pos' : 'neg'}`}>{fmtSigned(s.balance - 100)} over the match</div>
             </div>

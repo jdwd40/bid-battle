@@ -1,5 +1,5 @@
 import { type Bounds, type Portfolio, type QuoteSides } from './risk.js';
-import type { LoggedEvent, MatchState, PendingCounter, Phase, QuoteSubmission, RoundResult, SeatTradeRecord, Trade } from './types.js';
+import type { LoggedEvent, MatchState, PendingCounter, Phase, SealedQuote, RoundResult, SeatTradeRecord, Trade } from './types.js';
 import type { Difficulty } from './config.js';
 export interface SeatView {
     index: number;
@@ -12,13 +12,13 @@ export interface SeatView {
     privateCard: number | null;
     /** Published quote (only populated during TRADING). */
     quote: QuoteSides;
-    /** Whether the seat has confirmed its sealed submission (QUOTE_PREPARATION only). */
-    submissionConfirmed: boolean | null;
+    /** Whether the seat has confirmed its sealed quote (QUOTE_PREPARATION only). */
+    sealedQuoteConfirmed: boolean | null;
     hasActedThisCycle: boolean;
     ready: boolean;
 }
 export interface LocalInfo {
-    submission: QuoteSubmission | null;
+    sealedQuote: SealedQuote | null;
     portfolio: Portfolio;
     reserved: number;
     available: number;
@@ -52,7 +52,7 @@ export interface PlayerView {
 /**
  * Build the sanitised view for one seat (or an observer when seat is null).
  * Never includes other private cards, hidden community cards, unused cards,
- * or other players' sealed submissions.
+ * or other players' sealed quotes.
  */
 export declare function projectView(state: MatchState, seat: number | null, now: number, eventLimit?: number): PlayerView;
 export interface OpponentObservation {
@@ -62,7 +62,7 @@ export interface OpponentObservation {
     quote: QuoteSides;
 }
 /**
- * Structurally restricted input for AI decision making.
+ * Structurally restricted input for bot decision making.
  * Built field-by-field; it is impossible for hidden data to appear here.
  */
 export interface BotObservation {

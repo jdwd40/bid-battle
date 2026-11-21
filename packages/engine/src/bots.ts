@@ -5,10 +5,10 @@ import type { Command } from './types.js';
 import type { BotObservation } from './view.js';
 
 /**
- * Conditional expected settlement total given the cards a trader can see:
+ * Fair estimate: the expected settlement value given the cards a trader can see:
  * sum(known) + unknownDealt * mean(deck excluding known).
  */
-export function expectedTotal(ownCard: number, publicCards: readonly number[]): number {
+export function fairEstimate(ownCard: number, publicCards: readonly number[]): number {
   const known = [ownCard, ...publicCards];
   const rest = remainingDeck(known);
   const mean = rest.reduce((a, b) => a + b, 0) / rest.length;
@@ -97,7 +97,7 @@ interface Profile {
 const PROFILES: Record<Difficulty, Profile> = {
   easy: {
     difficulty: 'easy',
-    estimate: (obs, rng) => expectedTotal(obs.ownCard, obs.publicCards) + randomInt(rng, -6, 6),
+    estimate: (obs, rng) => fairEstimate(obs.ownCard, obs.publicCards) + randomInt(rng, -6, 6),
     halfSpread: (rng) => randomInt(rng, 5, 8),
     skewPerUnit: 1,
     edge: () => 2,
@@ -107,7 +107,7 @@ const PROFILES: Record<Difficulty, Profile> = {
   },
   normal: {
     difficulty: 'normal',
-    estimate: (obs) => expectedTotal(obs.ownCard, obs.publicCards),
+    estimate: (obs) => fairEstimate(obs.ownCard, obs.publicCards),
     halfSpread: (rng) => randomInt(rng, 3, 4),
     skewPerUnit: 1.5,
     edge: (obs, dir) => (Math.sign(obs.portfolio.q) === dir && obs.portfolio.q !== 0 ? 3 : 1),
@@ -118,7 +118,7 @@ const PROFILES: Record<Difficulty, Profile> = {
   hard: {
     difficulty: 'hard',
     estimate: (obs) => {
-      const ev = expectedTotal(obs.ownCard, obs.publicCards);
+      const ev = fairEstimate(obs.ownCard, obs.publicCards);
       const signal = marketSignal(obs);
       if (signal === null) return ev;
       // Cautious inference: lean toward the market but never move more than 5 points.

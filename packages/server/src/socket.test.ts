@@ -72,13 +72,13 @@ describe('socket transport', () => {
 
     clock.advance(10); // bots quote
     const pv = va.game!.phaseVersion;
-    const qa = await emit<any>(a, 'command', { token: created.token, commandId: 'qa', phaseVersion: pv, action: { type: 'SUBMIT_QUOTE', bid: 25, ask: 45, confirm: true } });
+    const qa = await emit<any>(a, 'command', { token: created.token, commandId: 'qa', phaseVersion: pv, action: { type: 'SEAL_QUOTE', bid: 25, ask: 45, confirm: true } });
     expect(qa.ok).toBe(true);
     // Bob's view must not reveal Alice's sealed quote
     const vbSealed = await emit<any>(b, 'command', { token: joined.token, commandId: 'noop', phaseVersion: pv, action: { type: 'READY' } });
     expect(vbSealed.ok).toBe(false);
     const tradingPromise = nextView(b, (v) => v.game?.phase === 'TRADING');
-    const qb = await emit<any>(b, 'command', { token: joined.token, commandId: 'qb', phaseVersion: pv, action: { type: 'SUBMIT_QUOTE', ask: 60, confirm: true } });
+    const qb = await emit<any>(b, 'command', { token: joined.token, commandId: 'qb', phaseVersion: pv, action: { type: 'SEAL_QUOTE', ask: 60, confirm: true } });
     expect(qb.ok).toBe(true);
     let vb = await tradingPromise;
     expect(vb.game!.seats[0].quote).toEqual({ bid: 25, ask: 45 });
@@ -131,7 +131,7 @@ describe('socket transport', () => {
     const vb2 = await vb2Promise;
     expect(vb2.seat).toBe(1);
     expect(vb2.game!.round).toBe(1);
-    expect(vb2.aiControlled[1]).toBe(false);
+    expect(vb2.botControlled[1]).toBe(false);
     // Both clients see the same public state
     const va2 = room.viewFor(created.token)!;
     expect(va2.game!.version).toBe(vb2.game!.version);

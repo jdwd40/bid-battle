@@ -10,7 +10,7 @@ export interface SimulationResult {
     steps: number;
 }
 /**
- * Run a complete all-AI match deterministically (no timers needed: every seat
+ * Run a complete all-bot match deterministically (no timers needed: every seat
  * acts immediately when the engine waits on it).
  */
 export declare function simulateMatch(seed: number, difficulties?: Difficulty[], config?: Partial<MatchConfig>): SimulationResult;
