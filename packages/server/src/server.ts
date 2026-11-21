@@ -17,6 +17,12 @@ export interface GameServerOptions {
   audit?: boolean;
   /** Rooms with no connected humans are removed after this many ms. */
   idleRoomMs?: number;
+  /**
+   * Origins (scheme://host[:port]) allowed to open a Socket.IO connection. Handshakes carrying any
+   * other `Origin` header are refused. When omitted, only the local dev origins are allowed: the
+   * Vite dev server (port 5173) and this server's own port, on localhost and 127.0.0.1.
+   */
+  allowedOrigins?: string[];
 }
 
 interface SocketData {
@@ -46,8 +52,21 @@ export function createGameServer(opts: GameServerOptions = {}) {
 
   const httpServer = createHttpServer((req, res) => serveStatic(req, res, opts.staticDir));
   const io = new SocketServer<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(httpServer, {
-    cors: { origin: true },
+    cors: { origin: (origin, cb) => cb(null, isAllowedOrigin(origin)) },
+    allowRequest: (req, cb) => cb(null, isAllowedOrigin(req.headers.origin)),
   });
+
+  /** Requests without an Origin header come from non-browser clients, which origins can't restrict anyway. */
+  function isAllowedOrigin(origin: string | undefined): boolean {
+    if (!origin) return true;
+    const allowed = opts.allowedOrigins ?? devOrigins(listeningPort());
+    return allowed.includes(origin);
+  }
+
+  function listeningPort(): number | undefined {
+    const addr = httpServer.address();
+    return typeof addr === 'object' && addr ? addr.port : undefined;
+  }
 
   function broadcast(room: Room) {
     for (const p of room.players.values()) {
@@ -196,6 +215,17 @@ export function createGameServer(opts: GameServerOptions = {}) {
       await new Promise<void>((resolve) => io.close(() => resolve()));
     },
   };
+}
+
+function devOrigins(ownPort: number | undefined): string[] {
+  const ports = [5173, ...(ownPort ? [ownPort] : [])];
+  return ports.flatMap((p) => [`http://localhost:${p}`, `http://127.0.0.1:${p}`]);
+}
+
+/** Parses a comma-separated origin list (e.g. the ALLOWED_ORIGINS env var); blank means unset. */
+export function parseAllowedOrigins(value: string | undefined): string[] | undefined {
+  const list = (value ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
+  return list.length ? list : undefined;
 }
 
 // ---------------- static files (production) ----------------
