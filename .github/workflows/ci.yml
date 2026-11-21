@@ -17,8 +17,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # README: requires Node.js 20+.
-          node-version: '>=20'
+          # Same major as the Dockerfile's node:26-slim base image (README: Node.js 20+, developed on 26).
+          node-version: 26.x
           cache: npm
 
       - name: Install (from lockfile)

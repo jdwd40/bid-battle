@@ -7,7 +7,7 @@ cards are revealed. Fictional credits only.
 
 ## Quick start
 
-Requires Node.js 20+ (developed on Node 26) and npm 10+.
+Requires Node.js 20+ (developed on Node 26; CI and the Docker image both run Node 26) and npm 10+.
 
 ```bash
 npm install          # installs all workspaces
