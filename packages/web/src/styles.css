@@ -1432,6 +1432,48 @@ table.data th.num {
   box-shadow: var(--shadow);
 }
 
+/* Coach, activity and help: collapsible sections below the play area, opened by tapping the title line. */
+.phone-section > summary,
+.table-phone details.help > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  list-style: none;
+}
+
+.phone-section > summary::-webkit-details-marker,
+.table-phone details.help > summary::-webkit-details-marker {
+  display: none;
+}
+
+.phone-section > summary::before,
+.table-phone details.help > summary::before {
+  content: '▸';
+  flex: none;
+  color: var(--ink-muted);
+}
+
+.phone-section[open] > summary::before,
+.table-phone details.help[open] > summary::before {
+  content: '▾';
+}
+
+.table-phone .coach.phone-section {
+  padding-block: 0;
+}
+
+.table-phone .coach.phone-section p {
+  margin: 0 0 10px;
+}
+
+.phone-section .feed {
+  margin-top: 4px;
+}
+
 /* ---------- coaching & tutorial ---------- */
 
 .coach {

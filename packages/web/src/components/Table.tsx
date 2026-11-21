@@ -127,8 +127,9 @@ export function Table({ view, game, offset, error, onCommand }: Props) {
             <PhoneActionBar game={game} onCommand={onCommand} error={errorBox} />
           </>
         )}
-        <CoachBox game={game} />
-        <ActivityFeed events={game.events} seats={game.seats} />
+        {/* Collapsible sections below the play area. The coach is keyed by round so it reopens or recollapses as each round starts. */}
+        <PhoneCoach key={game.round} game={game} />
+        <ActivityFeed events={game.events} seats={game.seats} collapsible />
         <HelpPanel />
         {counterModal}
       </div>
@@ -215,6 +216,19 @@ function CoachBox({ game }: { game: PlayerView }) {
       </div>
       {open && <p>{tip.body}</p>}
     </div>
+  );
+}
+
+/** Phones: the coach as a collapsible section, open in round 1 to guide new players and collapsed to its title from round 2. */
+function PhoneCoach({ game }: { game: PlayerView }) {
+  const [open, setOpen] = useState(game.round === 1);
+  const tip = coachTip(game);
+  if (!tip.title) return null;
+  return (
+    <details className="coach phone-section" data-testid="coach" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary data-testid="coach-title">{tip.title}</summary>
+      <p data-testid="coach-tip">{tip.body}</p>
+    </details>
   );
 }
 

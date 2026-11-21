@@ -254,6 +254,76 @@ test('during trading every trader is a compact row right below the card strip, a
   for (const shown of [page.getByTestId('balance'), page.getByTestId('reserved'), cashflow]) await expect(shown).toBeVisible();
 });
 
+test('in round 1 the coach is open below the play area, and activity and help open on tap', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('name-input').fill('Pocket');
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('start-match').click();
+  await page.getByTestId('tutorial-close').click();
+  await expect(page.getByTestId('quote-panel')).toBeVisible();
+
+  // The coach is open in round 1, below the quote form.
+  const tip = page.getByTestId('coach-tip');
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText('fair estimate');
+  const confirm = (await page.getByTestId('confirm-quote').boundingBox())!;
+  const coach = (await page.getByTestId('coach').boundingBox())!;
+  expect(coach.y, 'the coach sits below the quote form').toBeGreaterThan(confirm.y);
+
+  // Activity and help start collapsed; tapping a title opens it without sideways overflow.
+  const feed = page.getByTestId('activity-feed');
+  const rules = page.getByText('Settlement value', { exact: true });
+  await expect(feed).toBeHidden();
+  await expect(rules).toBeHidden();
+  await page.getByText('Activity', { exact: true }).click();
+  await expect(feed).toBeVisible();
+  await page.getByText('Rules & glossary', { exact: true }).click();
+  await expect(rules).toBeVisible();
+  await expectNoHorizontalOverflow(page, 'table with every section open');
+
+  // Tapping the coach's title closes and reopens it.
+  await page.getByTestId('coach-title').click();
+  await expect(tip).toBeHidden();
+  await page.getByTestId('coach-title').click();
+  await expect(tip).toBeVisible();
+  await expectNoHorizontalOverflow(page, 'table with the coach reopened');
+});
+
+test('from round 2 the coach shows only its title until I tap it', async ({ page }, testInfo) => {
+  // This project's server plays one-round matches; the chromium project's server, one port below, plays full matches.
+  const fullMatch = new URL(testInfo.project.use.baseURL!);
+  fullMatch.port = String(Number(fullMatch.port) - 1);
+  await page.goto(fullMatch.href);
+  await page.getByTestId('name-input').fill('Pocket');
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('start-match').click();
+  await page.getByTestId('tutorial-close').click();
+  await expect(page.getByTestId('coach-tip')).toBeVisible();
+
+  // Play out round 1: confirm each quote and pass each turn until the round review, then be ready.
+  const ready = page.getByTestId('ready');
+  await expect(async () => {
+    if (await ready.isVisible()) return;
+    for (const id of ['confirm-quote', 'pass']) {
+      const button = page.getByTestId(id);
+      if ((await button.isVisible()) && (await button.isEnabled())) await button.click({ timeout: 2_000 }).catch(() => {});
+    }
+    await expect(ready).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 120_000 });
+  await ready.click();
+
+  await expect(page.getByTestId('status-bar')).toContainText(/Round 2\//);
+  await expect(page.getByTestId('quote-panel')).toBeVisible();
+  const title = page.getByTestId('coach-title');
+  const tip = page.getByTestId('coach-tip');
+  await expect(title).toBeVisible();
+  await expect(tip).toBeHidden();
+
+  await title.click();
+  await expect(tip).toBeVisible();
+  await expectNoHorizontalOverflow(page, 'round 2 table with the coach open');
+});
+
 /** Create a solo room, start the match, close the tutorial and confirm the suggested quote, so trading starts. */
 async function startSoloTrading(page: Page): Promise<void> {
   await page.goto('/');
@@ -295,10 +365,10 @@ test("on my turn a one-row action bar leaves every trader's prices uncovered, an
   await expectFixedCoverageAtMost(page, 0.3, 'landscape table on my turn');
   await page.setViewportSize({ width: 375, height: 667 });
 
-  // Once I pass it is someone else's turn: only the status bar stays fixed.
+  // Once I pass it is someone else's turn (or, if I acted last, the next quote preparation): only the status bar stays fixed.
   await pass.click();
-  await expect(pass).toBeDisabled();
-  await expect(page.getByTestId('action-panel')).not.toHaveClass(/\bpinned\b/);
+  await expect(page.locator('[data-testid=pass]:enabled')).toHaveCount(0);
+  await expect(page.locator('[data-testid=action-panel].pinned')).toHaveCount(0);
   const { elements } = await measureFixedCoverage(page);
   expect(
     elements.filter((e) => !e.label.includes('status-bar')).map((e) => e.label),
@@ -308,8 +378,16 @@ test("on my turn a one-row action bar leaves every trader's prices uncovered, an
 
 test('Buy opens a bottom sheet with the trade confirmation, and Cancel returns to the table', async ({ page }) => {
   await startSoloTrading(page);
+  // Buy needs another trader's ask I can afford: pass any turn without one, and re-confirm quotes between cycles.
   const buy = page.getByTestId('buy');
-  await expect(buy).toBeEnabled({ timeout: 30_000 });
+  await expect(async () => {
+    if (await buy.isEnabled()) return;
+    for (const id of ['confirm-quote', 'pass']) {
+      const button = page.getByTestId(id);
+      if ((await button.isVisible()) && (await button.isEnabled())) await button.click({ timeout: 2_000 }).catch(() => {});
+    }
+    await expect(buy).toBeEnabled({ timeout: 1_000 });
+  }).toPass({ timeout: 60_000 });
   await page.evaluate(() => window.scrollTo(0, 0));
   await buy.click();
 
