@@ -162,7 +162,7 @@ function SeatTile({ seat, game, view, isMe }: { seat: SeatView; game: PlayerView
       </div>
       <div className="seat-status">
         {seat.isBot ? <span className="pill ai">AI · {difficultyLabel(seat.difficulty)}</span> : <span className="pill human">Human</span>}
-        {aiControlled && <span className="pill warn">AI playing (disconnected)</span>}
+        {aiControlled && <span className="pill warn" data-testid="takeover">AI playing (disconnected)</span>}
         <span className="pill">{fmtPosition(seat.position)}</span>
         {game.phase === 'QUOTE_PREPARATION' && <span className="pill">{seat.submissionConfirmed ? 'Quote locked' : 'Preparing…'}</span>}
         {trading && seat.hasActedThisCycle && !active && <span className="pill">Acted</span>}

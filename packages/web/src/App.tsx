@@ -11,6 +11,26 @@ import { Tutorial } from './components/Tutorial';
 
 const TUTORIAL_KEY = 'bidbattle.tutorialSeen';
 
+function roomFromLink(): string | null {
+  try {
+    return new URLSearchParams(window.location.search).get('room');
+  } catch {
+    return null;
+  }
+}
+
+/** Keep the address bar on the invite link while seated, so a reload or reopened link returns to the seat. */
+function setRoomInLink(code: string | null) {
+  try {
+    const url = new URL(window.location.href);
+    if (code) url.searchParams.set('room', code);
+    else url.searchParams.delete('room');
+    if (url.href !== window.location.href) window.history.replaceState(null, '', url);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function App() {
   const clientRef = useRef<GameClient | null>(null);
   const [client, setClient] = useState<GameClient | null>(null);
@@ -56,10 +76,19 @@ export function App() {
         setView(null);
         setError(reason);
       },
-    });
+    }, roomFromLink());
     clientRef.current = client;
     setClient(client);
     setResuming(client.hasSession);
+  }, []);
+
+  const seatedRoom = view?.room.code ?? null;
+  useEffect(() => {
+    if (seatedRoom) setRoomInLink(seatedRoom);
+  }, [seatedRoom]);
+  const leave = useCallback(async () => {
+    await clientRef.current?.leaveRoom();
+    setRoomInLink(null);
   }, []);
 
   // Errors fade after a few seconds.
@@ -105,11 +134,11 @@ export function App() {
         error={error}
         onSetSeat={(seat: number, d: Difficulty) => handle(client.setSeat(seat, d))}
         onStart={() => handle(client.startMatch())}
-        onLeave={() => client.leaveRoom()}
+        onLeave={leave}
       />
     );
   } else if (view.game.phase === 'MATCH_COMPLETE') {
-    screen = <MatchResults game={view.game} onLeave={() => client.leaveRoom()} />;
+    screen = <MatchResults game={view.game} onLeave={leave} />;
   } else if (view.game.phase === 'ROUND_REVIEW' && view.game.lastRound) {
     screen = <RoundReview view={view} game={view.game} offset={offset} error={error} onReady={() => onCommand({ type: 'READY' })} />;
   } else {

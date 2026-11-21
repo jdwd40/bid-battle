@@ -11,8 +11,10 @@ export declare class GameClient {
     private readonly listeners;
     private socket;
     private token;
+    private room;
     view: ClientView | null;
-    constructor(listeners: GameClientListeners, url?: string);
+    /** `room` is the code from the invite link; a token stored for that room is used to rejoin its seat. */
+    constructor(listeners: GameClientListeners, room?: string | null, url?: string);
     get hasSession(): boolean;
     private request;
     private session;

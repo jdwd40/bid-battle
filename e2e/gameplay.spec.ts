@@ -164,3 +164,76 @@ test('reconnecting restores the seat without restarting the match', async ({ bro
   expect(cardAfter).toBe(card);
   await expect(page.getByTestId('seat-0')).not.toContainText('AI playing');
 });
+
+test('closing the tab and reopening the invite link restores the seat and ends the takeover', async ({ browser }) => {
+  const ada = await openPlayer(browser, 'Ada');
+  const code = (await ada.getByTestId('room-code').textContent())!.trim();
+  const bo = await openPlayer(browser, 'Bo', code);
+  await ada.getByTestId('start-match').click();
+  for (const p of [ada, bo]) await dismissTutorial(p);
+  await expect(bo.getByTestId('quote-panel')).toBeVisible();
+  const card = await bo.locator('[data-testid="card"]:not([data-value="hidden"])').first().getAttribute('data-value');
+  const balance = await ada.getByTestId('seat-1').locator('.num').textContent();
+
+  // Bo closes the tab: a bot takes over the seat.
+  const context = bo.context();
+  await bo.close();
+  await expect(ada.getByTestId('seat-1').getByTestId('takeover')).toBeVisible();
+
+  // Bo opens the invite link again in the same browser and gets the seat back, match still running.
+  const again = await context.newPage();
+  await again.goto(`/?room=${code}`);
+  await expect(again.getByTestId('phase')).toBeVisible();
+  await expect(again.getByText('Round 1/10')).toBeVisible();
+  await expect(again.getByTestId('seat-1')).toContainText('(you)');
+  const cardAfter = await again.locator('[data-testid="card"]:not([data-value="hidden"])').first().getAttribute('data-value');
+  expect(cardAfter).toBe(card);
+  await expect(again.getByTestId('seat-1').locator('.num')).toHaveText(balance!);
+  await expect(ada.getByTestId('seat-1').getByTestId('takeover')).toHaveCount(0);
+});
+
+test("another room's invite link does not reuse this room's seat", async ({ browser }) => {
+  const ada = await openPlayer(browser, 'Ada');
+  const other = await openPlayer(browser, 'Cy');
+  const otherCode = (await other.getByTestId('room-code').textContent())!.trim();
+
+  const page = await ada.context().newPage();
+  await page.goto(`/?room=${otherCode}`);
+  await expect(page.getByTestId('code-input')).toHaveValue(otherCode);
+  await expect(page.getByTestId('room-code')).toHaveCount(0);
+});
+
+test('leaving a room forgets its seat', async ({ browser }) => {
+  const ada = await openPlayer(browser, 'Ada');
+  const code = (await ada.getByTestId('room-code').textContent())!.trim();
+  await openPlayer(browser, 'Bo', code); // keeps the room alive after Ada leaves
+  await ada.getByRole('button', { name: 'Leave table' }).click();
+  await expect(ada.getByTestId('name-input')).toBeVisible();
+
+  await ada.goto(`/?room=${code}`);
+  await expect(ada.getByTestId('code-input')).toHaveValue(code);
+  await expect(ada.getByTestId('room-code')).toHaveCount(0);
+});
+
+test('a stored seat for a room that no longer exists falls back to the join screen with a message', async ({ browser }) => {
+  const ada = await openPlayer(browser, 'Ada');
+  const code = (await ada.getByTestId('room-code').textContent())!.trim();
+  // Simulate the server forgetting the room (e.g. a restart) by corrupting the seat stored for it.
+  const corrupted = await ada.evaluate((c) => {
+    let n = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)!;
+      if (key.endsWith(c)) {
+        localStorage.setItem(key, 'stale-token');
+        n++;
+      }
+    }
+    return n;
+  }, code);
+  expect(corrupted).toBe(1);
+
+  await ada.goto(`/?room=${code}`);
+  await expect(ada.getByRole('alert')).toBeVisible();
+  await expect(ada.getByTestId('code-input')).toHaveValue(code);
+  await expect(ada.getByTestId('room-code')).toHaveCount(0);
+});
