@@ -1,0 +1,38 @@
+# Fly.io config: one always-running machine holding every room in memory (docs/adr/0001).
+# Deploy with `fly deploy` only when the status route reports 0 active matches.
+app = "bid-battle"
+primary_region = "lhr"
+
+# Time between SIGTERM and SIGKILL, so the server can tell connected players it is restarting.
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[build]
+
+[env]
+  PORT = "3001"
+  ALLOWED_ORIGINS = "https://bid-battle.fly.dev"
+  CLIENT_IP_HEADER = "Fly-Client-IP"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 1000
+    hard_limit = 1500
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

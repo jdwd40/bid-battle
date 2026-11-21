@@ -65,6 +65,24 @@ client from another device on your network, add that address (for example
 4. The host chooses each empty seat's AI difficulty (Easy / Normal / Hard, default Normal) and
    starts. Empty seats become AI. Nobody can join after the start; reconnecting is not a join.
 
+## Deploying to Fly.io
+
+Production is one always-running Fly.io machine at https://bid-battle.fly.dev (see
+`docs/adr/0001-single-instance-in-memory-rooms.md`). `Dockerfile` builds the engine, server and web
+client and runs the bundled server, which serves the client on the same port. `fly.toml` keeps
+exactly one machine running with auto-stop off, uses `/health` as the health check, allows 10 s
+between the stop signal and a forced kill, and sets `ALLOWED_ORIGINS=https://bid-battle.fly.dev`
+and `CLIENT_IP_HEADER=Fly-Client-IP`. Deploys are manual, once CI passes:
+
+1. Install `flyctl` (https://fly.io/docs/flyctl/install/) and log in with `fly auth login`. The
+   first time only, create the app with `fly apps create bid-battle`.
+2. Check that no match is running: `curl https://bid-battle.fly.dev/status` must report 0 active
+   matches. A deploy restarts the server and ends every match in progress.
+3. Run `fly deploy` from the repo root.
+
+To try the image locally: `docker build -t bid-battle . && docker run --rm -p 3001:3001 bid-battle`,
+then open http://localhost:3001 (`curl http://localhost:3001/health` returns `{"ok":true}`).
+
 ## Rules
 
 - Four seats, 100 credits each, ten rounds, three trading cycles per round. Highest final balance
@@ -200,7 +218,7 @@ engine commands with the same validation.
 
 - In-memory rooms: a server restart ends all matches. Idle rooms with no connected humans are
   swept after 10 minutes.
-- No accounts, matchmaking, spectators, persistence, or deployment configuration.
+- No accounts, matchmaking, spectators or persistence.
 - Reconnect tokens live in the tab's `sessionStorage`; closing the tab loses the seat (the AI
   plays it out).
 - The action panel offers the best bid/ask to hit; countering lets you target any trader's quote.
