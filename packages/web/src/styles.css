@@ -1253,6 +1253,152 @@ table.data th.num {
   padding: 6px 8px;
 }
 
+/* Trader rows: one compact line per trader, in place of the seat tiles. */
+.trader-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trader-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 44px 48px 48px;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.trader-row.me {
+  background: rgba(243, 201, 105, 0.08);
+}
+
+.trader-row.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(243, 201, 105, 0.35);
+}
+
+.trader-row .tr-who {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trader-row .tr-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trader-row .tr-badges {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.trader-row .pill {
+  padding: 0 5px;
+  font-size: 0.66rem;
+  gap: 2px;
+}
+
+.trader-row .pill.you {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 800;
+}
+
+.trader-row .pill.turn {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.trader-row .tr-status {
+  font-size: 0.66rem;
+  color: var(--ink-muted);
+}
+
+.trader-row .tr-price,
+.trader-row .tr-num {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.trader-row .tr-label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+}
+
+.trader-row .tr-price strong {
+  font-size: 1rem;
+}
+
+.trader-row .tr-price.bid strong {
+  color: var(--buy);
+}
+
+.trader-row .tr-price.ask strong {
+  color: var(--sell);
+}
+
+.trader-row .tr-price.empty strong {
+  color: var(--ink-muted);
+}
+
+.trader-row .tr-num {
+  color: var(--ink-dim);
+}
+
+.trader-row .tr-quote-hidden {
+  grid-column: span 2;
+  text-align: center;
+  font-size: 0.66rem;
+}
+
+/* My stats: Available and Position, with the rest behind Details. */
+.phone-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.phone-stats-main,
+.phone-stats-more {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.phone-stats-more {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.phone-stats .stat {
+  padding: 4px 8px;
+}
+
+.phone-stats .stat .value {
+  font-size: 1rem;
+}
+
 /* ---------- coaching & tutorial ---------- */
 
 .coach {

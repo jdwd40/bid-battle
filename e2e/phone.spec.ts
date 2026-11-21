@@ -204,6 +204,56 @@ test('during quote preparation the whole quote form is on my first screen', asyn
   await expectFullyInViewport(refusal, confirm);
 });
 
+test('during trading every trader is a compact row right below the card strip, and my stat details are one tap away', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('name-input').fill('Pocket');
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('start-match').click();
+  await page.getByTestId('tutorial-close').click();
+  await page.getByTestId('confirm-quote').click();
+  await expect(page.getByTestId('phase')).toHaveText('Trading');
+
+  // On my turn, from the top of the page: every trader's row, bid and ask are on the first screen.
+  await expect(page.getByTestId('pass')).toBeEnabled({ timeout: 30_000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const count = await page.locator('[data-testid^="seat-"]').count();
+  expect(count, 'traders at the table').toBeGreaterThanOrEqual(2);
+  for (let i = 0; i < count; i++) {
+    await expectFullyInViewport(page.getByTestId(`seat-${i}`), page.getByTestId(`bid-${i}`), page.getByTestId(`ask-${i}`));
+  }
+  await expectNoHorizontalOverflow(page, 'trader rows');
+
+  // The rows start right below the card strip, one compact row per trader.
+  const strip = (await page.getByTestId('card-strip').boundingBox())!;
+  const first = (await page.getByTestId('seat-0').boundingBox())!;
+  const gap = first.y - (strip.y + strip.height);
+  expect(gap, 'gap between the card strip and the first trader row').toBeGreaterThanOrEqual(0);
+  expect(gap, 'gap between the card strip and the first trader row').toBeLessThanOrEqual(40);
+  for (let i = 0; i < count; i++) {
+    const box = (await page.getByTestId(`seat-${i}`).boundingBox())!;
+    expect(box.height, `trader row ${i} height`).toBeLessThanOrEqual(56);
+    if (i > 0) {
+      const prev = (await page.getByTestId(`seat-${i - 1}`).boundingBox())!;
+      expect(box.y, `trader row ${i} sits below row ${i - 1}`).toBeGreaterThanOrEqual(prev.y + prev.height - 1);
+    }
+  }
+
+  // It is my turn, so my row (I created the room: seat 0) is the one marked active, and it says "You". Bots say so.
+  const mine = page.getByTestId('seat-0');
+  await expect(mine).toHaveAttribute('aria-current', 'true');
+  await expect(page.locator('[data-testid^="seat-"][aria-current="true"]')).toHaveCount(1);
+  await expect(mine).toContainText('You');
+  await expect(page.getByTestId('seat-1')).toContainText('Bot');
+
+  // Available and Position are in the play area; Balance, Cashflow and Reserved risk wait behind Details.
+  await expect(page.getByTestId('available')).toBeVisible();
+  await expect(page.getByTestId('position')).toBeVisible();
+  const cashflow = page.getByText('Cashflow', { exact: true });
+  for (const hidden of [page.getByTestId('balance'), page.getByTestId('reserved'), cashflow]) await expect(hidden).not.toBeVisible();
+  await page.getByTestId('stat-details').click();
+  for (const shown of [page.getByTestId('balance'), page.getByTestId('reserved'), cashflow]) await expect(shown).toBeVisible();
+});
+
 /** A price input brings up a numeric keypad and has text large enough that iOS doesn't zoom on focus. */
 async function expectPhonePriceInput(input: Locator): Promise<void> {
   await expect(input).toHaveAttribute('inputmode', 'numeric');
