@@ -3,7 +3,7 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import { Server as SocketServer, type Socket } from 'socket.io';
 import { secureRng, type MatchConfig, type Rng } from '@bid-battle/engine';
 import { realClock, type Clock } from './clock.js';
-import type { ClientToServerEvents, ServerToClientEvents } from './protocol.js';
+import { SESSION_GONE, type ClientToServerEvents, type ServerToClientEvents } from './protocol.js';
 import { Room } from './room.js';
 import { createLimits, LIMIT_ERRORS, type LimitOptions } from './limits.js';
 
@@ -164,9 +164,9 @@ export function createGameServer(opts: GameServerOptions = {}) {
     socket.on('rejoin', (req, ack) => {
       const code = typeof req?.token === 'string' ? tokenToRoom.get(req.token) : undefined;
       const room = code ? rooms.get(code) : undefined;
-      if (!room) return ack({ ok: false, error: 'that session no longer exists' });
+      if (!room) return ack({ ok: false, error: SESSION_GONE });
       const p = room.reconnect(req.token);
-      if (!p) return ack({ ok: false, error: 'that session no longer exists' });
+      if (!p) return ack({ ok: false, error: SESSION_GONE });
       attach(socket, room, req.token);
       ack({ ok: true, code: room.code, token: req.token, seat: p.seat });
       broadcast(room);

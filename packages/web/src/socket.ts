@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { Command, CommandResult, Difficulty } from '@bid-battle/engine';
-import type { ClientView, JoinResponse } from '../../server/src/protocol';
+import { SESSION_GONE, type ClientView, type JoinResponse } from '../../server/src/protocol';
 
 /** Reconnect tokens persist across tab closes, one per room, so an invite link can return a player to their seat. */
 const TOKEN_PREFIX = 'bidbattle.token.';
@@ -27,16 +27,7 @@ export class GameClient {
     this.socket = io(url ?? '/', { transports: ['websocket', 'polling'] });
     this.socket.on('connect', () => {
       listeners.onStatus('online');
-      if (this.token) {
-        this.socket.emit('rejoin', { token: this.token }, (res: JoinResponse | { ok: false; error: string }) => {
-          if (!res.ok) {
-            const code = this.room;
-            this.clearSession();
-            listeners.onView(null);
-            listeners.onKicked(`Your seat at table ${code} is no longer available. Join again below.`);
-          }
-        });
-      }
+      this.rejoin();
     });
     this.socket.on('disconnect', () => listeners.onStatus('offline'));
     this.socket.on('view', (view: ClientView) => {
@@ -46,6 +37,27 @@ export class GameClient {
     this.socket.on('roomClosed', (reason: string) => {
       this.clearSession();
       listeners.onKicked(reason);
+    });
+  }
+
+  /** Rejoin the stored seat. Only forget the token when the server says the seat is gone; retry transient errors. */
+  private rejoin(attempt = 0) {
+    if (!this.token || !this.socket.connected) return;
+    this.socket.emit('rejoin', { token: this.token }, (res: JoinResponse | { ok: false; error: string }) => {
+      if (res.ok) return;
+      if (res.error !== SESSION_GONE && attempt < 5) {
+        setTimeout(() => this.rejoin(attempt + 1), 1000 * (attempt + 1));
+        return;
+      }
+      this.listeners.onView(null);
+      if (res.error !== SESSION_GONE) {
+        // Still transient after retries: keep the token so reopening the link can try again.
+        this.listeners.onKicked(res.error);
+        return;
+      }
+      const code = this.room;
+      this.clearSession();
+      this.listeners.onKicked(`Your seat at table ${code} is no longer available. Join again below.`);
     });
   }
 
