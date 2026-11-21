@@ -5,3 +5,5 @@ playwright-report
 test-results
 .env
 packages/web/dist-types
+# agent worktrees (Claude Code)
+.claude/worktrees/

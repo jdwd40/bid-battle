@@ -20,7 +20,6 @@ import type {
   PendingCounter,
   RoundResult,
   SeatSetup,
-  SeatState,
   Side,
   Trade,
   TradeContext,

@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { MatchConfig } from '@bid-battle/engine';
 import { parseAllowedOrigins } from './origins.js';
 import { createGameServer } from './server.js';
 
@@ -8,7 +9,7 @@ const envNumber = (name: string) => (process.env[name] !== undefined ? Number(pr
 
 const port = envNumber('PORT') ?? 3001;
 const botDelayMs = envNumber('BOT_DELAY_MS') ?? 900;
-const timers: Record<string, number> = {};
+const timers: Partial<MatchConfig['timers']> = {};
 for (const [env, key] of [
   ['QUOTE_PREP_MS', 'quotePrepMs'],
   ['TURN_MS', 'turnMs'],
@@ -31,9 +32,10 @@ const limits = {
 
 const staticDir = process.env.STATIC_DIR ?? resolve(process.cwd(), 'packages/web/dist');
 
+// timers holds only the overridden ones; the engine fills the rest from its defaults
 const server = createGameServer({
   botDelayMs,
-  config: { ...(rounds ? { rounds } : {}), ...(Object.keys(timers).length ? { timers: timers as any } : {}) },
+  config: { ...(rounds ? { rounds } : {}), ...(Object.keys(timers).length ? { timers: timers as MatchConfig['timers'] } : {}) },
   staticDir: existsSync(staticDir) ? staticDir : undefined,
   audit: process.env.AUDIT === '1',
   limits,

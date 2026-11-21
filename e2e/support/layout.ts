@@ -34,9 +34,33 @@ export async function expectNoHorizontalOverflow(page: Page, where: string): Pro
   });
 }
 
-/** Assert each locator is fully inside the viewport at the current scroll position (no scrolling is done). */
+/** Assert each locator is fully inside the viewport at the current scroll position (no scrolling is done). It ignores overlap: pair it with `expectUncovered` where something may be pinned on top. */
 export async function expectFullyInViewport(...locators: Locator[]): Promise<void> {
   for (const loc of locators) await expect(loc).toBeInViewport({ ratio: 1 });
+}
+
+/**
+ * Nothing is drawn over each locator: at its centre and near each corner, the topmost element is the locator's element or inside it.
+ * (toBeInViewport ignores overlap, so a pinned bar on top of an element would still pass it.)
+ */
+export async function expectUncovered(...locators: Locator[]): Promise<void> {
+  for (const loc of locators) {
+    const covering = await loc.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      // Probes sit a little in from the corners: hit-testing skips the corners that a border radius cuts off.
+      const at = (fx: number, fy: number) => [r.left + r.width * fx, r.top + r.height * fy];
+      const points = [at(0.5, 0.5), at(0.2, 0.2), at(0.8, 0.2), at(0.2, 0.8), at(0.8, 0.8)];
+      for (const [x, y] of points) {
+        const top = document.elementFromPoint(x, y) as HTMLElement | null;
+        if (!top || !(el === top || el.contains(top))) {
+          const id = top?.dataset.testid ? `[data-testid=${top.dataset.testid}]` : '';
+          return `${top?.tagName.toLowerCase() ?? 'nothing'}${id}.${top?.className ?? ''} at ${Math.round(x)},${Math.round(y)}`;
+        }
+      }
+      return null;
+    });
+    expect(covering, `something covers ${loc}`).toBeNull();
+  }
 }
 
 /** One fixed or sticky element's on-screen vertical extent, as reported by `measureFixedCoverage`. */

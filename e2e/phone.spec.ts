@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { expectFixedCoverageAtMost, expectFullyInViewport, expectNoHorizontalOverflow, measureFixedCoverage } from './support/layout';
+import { expectFixedCoverageAtMost, expectFullyInViewport, expectNoHorizontalOverflow, expectUncovered, measureFixedCoverage } from './support/layout';
 
 // Runs only in the `phone` project (see playwright.config.ts): an iPhone SE-sized (375×667) touch viewport, on a
 // server that plays one-round matches so the solo match reaches the match results.
@@ -436,26 +436,4 @@ async function expectDirectlyAbove(upper: Locator, lower: Locator): Promise<void
   expect(gap, 'gap between the message and the control below it').toBeGreaterThanOrEqual(0);
   expect(gap, 'gap between the message and the control below it').toBeLessThanOrEqual(16);
   expect(Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x), 'horizontal overlap').toBeGreaterThan(0);
-}
-
-/**
- * Nothing is drawn over `loc`: at its centre and near each corner, the topmost element is `loc` or inside it.
- * (toBeInViewport ignores overlap, so a pinned bar on top of an element would still pass it.)
- */
-async function expectUncovered(loc: Locator): Promise<void> {
-  const covering = await loc.evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    // Probes sit a little in from the corners: hit-testing skips the corners that a border radius cuts off.
-    const at = (fx: number, fy: number) => [r.left + r.width * fx, r.top + r.height * fy];
-    const points = [at(0.5, 0.5), at(0.2, 0.2), at(0.8, 0.2), at(0.2, 0.8), at(0.8, 0.8)];
-    for (const [x, y] of points) {
-      const top = document.elementFromPoint(x, y) as HTMLElement | null;
-      if (!top || !(el === top || el.contains(top))) {
-        const id = top?.dataset.testid ? `[data-testid=${top.dataset.testid}]` : '';
-        return `${top?.tagName.toLowerCase() ?? 'nothing'}${id}.${top?.className ?? ''} at ${Math.round(x)},${Math.round(y)}`;
-      }
-    }
-    return null;
-  });
-  expect(covering, `something covers ${loc}`).toBeNull();
 }

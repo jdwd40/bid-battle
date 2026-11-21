@@ -29,6 +29,7 @@ Other root commands:
 | `npm run build` | Engine declarations, a bundled server (`packages/server/dist/index.js`) and the web build (`packages/web/dist`) |
 | `npm start` | Runs the bundled server; it also serves the built web client on http://localhost:3001 |
 | `npm run typecheck` | `tsc -b` across all packages |
+| `npm run lint` | ESLint across all packages, including React's rules of hooks |
 | `npm test` | Vitest: engine, risk, bots, room driver (fake time) and Socket.IO transport tests |
 | `npm run test:e2e` | Playwright: two browser contexts play through a settlement, plus a reconnect test. Run `npx playwright install chromium` once first |
 

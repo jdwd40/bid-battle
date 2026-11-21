@@ -111,7 +111,7 @@ A trader's credits, which change only at settlement.
 The fictional currency of the game; the table's total is always 400.
 
 **Worst loss**:
-The most a trader's portfolio could lose anywhere in the public range.
+The most a trader's portfolio could lose anywhere in the public range. Raising a bid or lowering an ask raises it.
 
 **Reserved risk**:
 The largest worst loss across every way a trader's published quote could still be filled.
