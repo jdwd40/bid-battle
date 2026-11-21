@@ -31,7 +31,8 @@ export interface GameServerOptions {
   allowedOrigins?: string[];
 }
 
-export const SERVER_RESTARTING_NOTICE = 'The server is restarting, so this match has ended. Please create or join a new room in a minute.';
+/** Sent to every client as the shutdown notice, and as the refusal for new rooms and joins while shutting down. */
+export const SERVER_RESTARTING = 'The server is restarting, so every room is closing. Please create or join a new room in a minute.';
 
 interface SocketData {
   token?: string;
@@ -148,7 +149,7 @@ export function createGameServer(opts: GameServerOptions = {}) {
     });
 
     socket.on('createRoom', (req, ack) => {
-      if (shuttingDown) return ack({ ok: false, error: 'the server is restarting; try again in a minute' });
+      if (shuttingDown) return ack({ ok: false, error: SERVER_RESTARTING });
       if (typeof req?.name !== 'string') return ack({ ok: false, error: 'name required' });
       const refused = limits.claimRoom(clientIp, rooms.size);
       if (refused) return ack({ ok: false, error: refused });
@@ -165,6 +166,7 @@ export function createGameServer(opts: GameServerOptions = {}) {
     });
 
     socket.on('joinRoom', (req, ack) => {
+      if (shuttingDown) return ack({ ok: false, error: SERVER_RESTARTING });
       if (typeof req?.name !== 'string' || typeof req?.code !== 'string') return ack({ ok: false, error: 'name and room code required' });
       const room = rooms.get(req.code.trim().toUpperCase());
       if (!room) return ack({ ok: false, error: 'room not found' });
@@ -246,10 +248,10 @@ export function createGameServer(opts: GameServerOptions = {}) {
       });
     },
     close,
-    /** Graceful stop for a deploy: refuse new rooms, tell every client, then close. */
+    /** Graceful stop for a deploy: refuse new rooms and joins, tell every client, then close. Rejoin keeps working until the close. */
     async shutdown() {
       shuttingDown = true;
-      io.emit('roomClosed', SERVER_RESTARTING_NOTICE);
+      io.emit('roomClosed', SERVER_RESTARTING);
       await new Promise<void>((resolve) => clock.setTimeout(resolve, opts.shutdownGraceMs ?? 1_000));
       await close();
     },
