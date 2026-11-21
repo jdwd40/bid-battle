@@ -1,5 +1,5 @@
 import type { Command, CommandResult, Difficulty } from '@bid-battle/engine';
-import type { ClientView, JoinResponse } from '../../server/src/protocol';
+import { type ClientView, type JoinResponse } from '../../server/src/protocol';
 export type ConnectionStatus = 'connecting' | 'online' | 'offline';
 export interface GameClientListeners {
     onView(view: ClientView | null): void;
@@ -11,8 +11,12 @@ export declare class GameClient {
     private readonly listeners;
     private socket;
     private token;
+    private room;
     view: ClientView | null;
-    constructor(listeners: GameClientListeners, url?: string);
+    /** `room` is the code from the invite link; a token stored for that room is used to rejoin its seat. */
+    constructor(listeners: GameClientListeners, room?: string | null, url?: string);
+    /** Rejoin the stored seat. Only forget the token when the server says the seat is gone; retry transient errors. */
+    private rejoin;
     get hasSession(): boolean;
     private request;
     private session;

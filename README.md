@@ -54,8 +54,9 @@ client from another device on your network, add that address (for example
 ## Playing from a second browser or device
 
 1. Player one creates a table and reads the five-letter room code (or clicks **Copy invite link**).
-2. On the same machine, open a second tab or a private window at http://localhost:5173 and join with
-   the code. Sessions are stored per tab, so two tabs are two players.
+2. On the same machine, open a private window or a second browser at http://localhost:5173 and join
+   with the code. Your seat is remembered per room in the browser, so two tabs in one browser are the
+   same player.
 3. From another device on the same network, open `http://<your-LAN-IP>:5173/?room=CODE`. Vite binds
    to localhost by default; run `npm run dev -w @bid-battle/web -- --host` (with the server running
    separately via `ALLOWED_ORIGINS=http://<your-LAN-IP>:5173 npm run dev -w @bid-battle/server`, since
@@ -180,7 +181,7 @@ result; a command carrying an outdated phase version is rejected.
 
 Disconnected players keep their seat, cards, balance and quotes; at the next decision the room lets a
 Normal bot act for them: a takeover (the seat is marked "Takeover", distinct from a bot seat).
-Reconnecting with the per-tab token cancels any not-yet-fired bot action and hands control back without restarting anything. Host
+Reconnecting with the room's stored token cancels any not-yet-fired bot action and hands control back without restarting anything. Host
 control moves to another player if the host leaves the lobby; a running match never depends on the
 host.
 
@@ -205,7 +206,7 @@ engine commands with the same validation.
 - `npm run test:e2e` runs the browser smoke test: create room → join from a second context → set bot
   difficulties → start → sealed quotes (opponent's prices hidden until publication) → trade with
   preview → settlement → both clients agree on cards, settlement value and balances → ready for round 2; plus
-  a reload/reconnect test. The Playwright web server runs the production build with 100 ms bot
+  reload/reconnect, close-tab-and-reopen-invite-link, per-room token, leave and stale-token tests. The Playwright web server runs the production build with 100 ms bot
   delays and shortened turn/counter timers.
 
 ## Design decisions and assumptions
@@ -226,8 +227,9 @@ engine commands with the same validation.
   with no connected players are
   swept after 10 minutes.
 - No accounts, matchmaking, spectators or persistence.
-- Reconnect tokens live in the tab's `sessionStorage`; closing the tab loses the seat (a
-  takeover by a bot plays it out).
+- Reconnect tokens live in the browser's `localStorage`, one per room code. Reopening the invite link
+  (`?room=CODE`) in the same browser rejoins the seat; leaving the room forgets it. A different
+  browser or device cannot reclaim the seat.
 - The action panel offers the best bid/ask to hit; countering lets you target any trader's quote.
 - Bot tuning is heuristic. Over 200 seeded matches Hard averages ≈110 credits, Normal ≈100 and
   Easy ≈89, with roughly 27 trades per match.

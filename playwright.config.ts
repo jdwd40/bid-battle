@@ -16,8 +16,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    // Serve the production web build from the game server with fast bots and short timers.
-    command: `npm run build -w @bid-battle/web && PORT=${PORT} BOT_DELAY_MS=100 TURN_MS=8000 COUNTER_MS=4000 REVIEW_MS=20000 STATIC_DIR=packages/web/dist npx tsx packages/server/src/index.ts`,
+    // Serve the production web build from the game server with fast bots, short timers and room limits high enough for every test.
+    command: `npm run build -w @bid-battle/web && PORT=${PORT} BOT_DELAY_MS=100 TURN_MS=8000 COUNTER_MS=4000 REVIEW_MS=20000 ROOMS_PER_IP=1000 STATIC_DIR=packages/web/dist npx tsx packages/server/src/index.ts`,
     url: `http://127.0.0.1:${PORT}/health`,
     reuseExistingServer: false,
     timeout: 120_000,
