@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createGameServer } from './server.js';
+import { createGameServer, parseAllowedOrigins } from './server.js';
 
 const port = Number(process.env.PORT ?? 3001);
 const botDelayMs = process.env.BOT_DELAY_MS !== undefined ? Number(process.env.BOT_DELAY_MS) : 900;
@@ -33,6 +33,7 @@ const server = createGameServer({
   staticDir: existsSync(staticDir) ? staticDir : undefined,
   audit: process.env.AUDIT === '1',
   limits,
+  allowedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
 });
 
 server.listen(port).then((p) => {
