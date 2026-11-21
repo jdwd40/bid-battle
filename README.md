@@ -41,6 +41,8 @@ Abuse limits, also from the environment: `ROOMS_PER_IP` (rooms one IP may create
 carries the client IP; set it to `Fly-Client-IP` in production. Unset, the socket's remote address is
 used, so do not set it when the server is reachable without the proxy (a client could fake the header).
 A refused room creation, or a message over the rate, is answered with an error; the connection stays open.
+The Playwright servers set `ROOMS_PER_IP=1000` because the browser suite creates many rooms from one IP;
+the production default stays 5.
 
 `ALLOWED_ORIGINS` is a comma-separated list of origins allowed to open a game connection (in
 production, the app's own origin, e.g. `https://bid-battle.fly.dev`). Handshakes from any other
@@ -207,7 +209,8 @@ engine commands with the same validation.
   difficulties → start → sealed quotes (opponent's prices hidden until publication) → trade with
   preview → settlement → both clients agree on cards, settlement value and balances → ready for round 2; plus
   reload/reconnect, close-tab-and-reopen-invite-link, per-room token, leave and stale-token tests. The Playwright web server runs the production build with 100 ms bot
-  delays and shortened turn/counter timers.
+  delays, shortened turn/counter timers and `ROOMS_PER_IP=1000` (the suite creates many rooms from one IP;
+  production keeps the default of 5).
 
 ## Design decisions and assumptions
 
